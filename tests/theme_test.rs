@@ -323,9 +323,11 @@ fn surface_hover_differs_from_surface() {
         let text = read_theme(t);
         let base = token_hex(&text, "surface").unwrap();
         let hover = token_hex(&text, "surface-hover").unwrap();
+        // Compare the full RGBA tuple: glass themes keep the same RGB and
+        // separate the states by alpha alone (#ffffff20 -> #ffffff30).
         assert_ne!(
-            (base.0, base.1, base.2),
-            (hover.0, hover.1, hover.2),
+            (base.0, base.1, base.2, base.3),
+            (hover.0, hover.1, hover.2, hover.3),
             "{t}: hover state must be visible"
         );
     }
@@ -394,7 +396,8 @@ fn shared_layout_constants_are_declared_once() {
             .join("tokens.slint"),
     )
     .unwrap();
-    for c in ["titlebar_height", "toolbar_height", "sidebar_width", "radius_md"] {
+    // Slint property names are kebab-case in the .slint sources.
+    for c in ["titlebar-height", "toolbar-height", "sidebar-width", "radius-md"] {
         assert!(tokens.contains(c), "missing shared constant {c}");
     }
 }
