@@ -298,7 +298,7 @@ fn add_custom_colour_invalid_hex() {
 
 #[test]
 fn colour_for_key_resolves_builtin() {
-    let s = app();
+    let mut s = app();
     assert_eq!(s.colour_for_key("blue"), Some(LineColour::Blue));
 }
 
