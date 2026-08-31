@@ -1383,7 +1383,8 @@ mod tests {
         s.doc_mut().highlight_lines(0, 0, LineColour::Purple);
         let id = s.save_active_as_note().unwrap();
 
-        let mut other = state();
+        // A second window over the SAME database (simulates a restart).
+        let mut other = AppState::new(Settings::default(), s.db.clone());
         other.open_note(id).unwrap();
         assert_eq!(other.doc().lines[0].colour, LineColour::Purple);
         assert_eq!(other.doc().lines[0].list_type, ListType::Bullet);
