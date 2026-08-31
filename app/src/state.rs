@@ -89,7 +89,6 @@ pub struct AppState {
 
     pub extract_open: bool,
     pub extract_selected: Vec<String>,
-    pub extract_grouped: bool,
 
     pub note_query: String,
     pub selected_note_id: i64,
@@ -114,7 +113,6 @@ impl AppState {
     pub fn new(settings: Settings, db: NotesDb) -> Self {
         let palette = Palette::new(settings.custom_palette.clone());
         Self {
-            extract_grouped: settings.extract_order == "grouped",
             settings,
             db,
             tabs: vec![Tab::untitled()],
@@ -467,7 +465,7 @@ impl AppState {
     }
 
     pub fn extract_order(&self) -> ExtractionOrder {
-        if self.extract_grouped {
+        if self.settings.extract_order == "grouped" {
             ExtractionOrder::GroupByColour
         } else {
             ExtractionOrder::Document
@@ -1235,7 +1233,7 @@ mod tests {
         s.doc_mut().highlight_lines(0, 1, LineColour::Blue);
         s.extract_selected = vec!["blue".into()];
         assert_eq!(s.extract().text, "a\nb");
-        s.extract_grouped = true;
+        s.settings.extract_order = "grouped".to_string();
         assert!(s.extract().text.starts_with("# Blue"));
     }
 

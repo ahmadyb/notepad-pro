@@ -116,29 +116,43 @@ pub fn decode(raw: &[u8], info: &EncodingInfo) -> String {
     text.into_owned()
 }
 
-/// Encode a `String`.
-///
-/// `encoding_rs` always emits a BOM from its UTF-16/UTF-32 encoders, so a
-/// manual BOM is only prepended for UTF-8, and only when `with_bom` is set.
-pub fn encode(text: &str, label: &str, with_bom: bool) -> Vec<u8> {
-    let encoding = encoding_for_label(label);
-    let (bytes, _, _) = encoding.encode(text);
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len() + 4);
-    if with_bom && encoding == encoding_rs::UTF_8 {
-        out.extend_from_slice(&[0xEF, 0xBB, 0xBF]);
+/// The BOM bytes an encoding uses; empty for encodings without a BOM.
+pub fn bom_bytes(label: &str) -> &'static [u8] {
+    match encoding_for_label(label).name() {
+        "UTF-8" => &[0xEF, 0xBB, 0xBF],
+        "UTF-16LE" => &[0xFF, 0xFE],
+        "UTF-16BE" => &[0xFE, 0xFF],
+        "UTF-32LE" => &[0xFF, 0xFE, 0x00, 0x00],
+        "UTF-32BE" => &[0x00, 0x00, 0xFE, 0xFF],
+        _ => &[],
     }
-    out.extend_from_slice(bytes.as_ref());
-    out
 }
 
-/// `true` when `encoding_rs` emits a BOM automatically for this label.
-pub fn encoder_emits_bom(label: &str) -> bool {
-    // `encoding_rs` prepends a BOM when encoding UTF-16/UTF-32 (and never
-    // for UTF-8 or single-byte encodings).
-    matches!(
-        encoding_for_label(label).name(),
-        "UTF-16LE" | "UTF-16BE" | "UTF-32LE" | "UTF-32BE"
-    )
+/// Encode a `String`, prepending the encoding's BOM when `with_bom` is set.
+///
+/// Note: the non-streaming `Encoding::encode` must NOT be used here. For
+/// UTF-16/UTF-32 (and replacement) it silently substitutes the WHATWG
+/// *output encoding* — UTF-8 — and returns plain UTF-8 bytes without a
+/// BOM. The streaming encoder always writes the real encoding.
+pub fn encode(text: &str, label: &str, with_bom: bool) -> Vec<u8> {
+    let encoding = encoding_for_label(label);
+    let mut out: Vec<u8> = Vec::with_capacity(text.len() * 2 + 4);
+    if with_bom {
+        out.extend_from_slice(bom_bytes(label));
+    }
+    let mut encoder = encoding.new_encoder();
+    let mut total_read = 0usize;
+    loop {
+        let (result, read, _had_errors) =
+            encoder.encode_from_utf8_to_vec(&text[total_read..], &mut out, true);
+        total_read += read;
+        match result {
+            encoding_rs::CoderResult::InputEmpty => break,
+            // The Vec target grows on demand; loop to finish the input.
+            encoding_rs::CoderResult::OutputFull => continue,
+        }
+    }
+    out
 }
 
 /// The list offered in the Save / Reopen-with dialogs.
@@ -262,9 +276,18 @@ mod tests {
 
     #[test]
     fn encode_utf16_roundtrips() {
-        let bytes = encode("héllo", "utf-16le", false);
+        let bytes = encode("héllo", "utf-16le", true);
         let info = detect_encoding(&bytes);
+        assert_eq!(info.label, "utf-16le");
         assert_eq!(decode(&bytes, &info), "héllo");
+    }
+
+    #[test]
+    fn encode_utf16le_is_real_utf16_even_for_ascii_input() {
+        // Regression: the non-streaming `Encoding::encode` returns the
+        // UTF-8 output encoding for UTF-16 and would produce `[0x41]`.
+        let bytes = encode("A", "UTF-16LE", true);
+        assert_eq!(bytes, vec![0xFF, 0xFE, 0x41, 0x00]);
     }
 
     #[test]
@@ -282,13 +305,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn utf16_encoders_emit_their_own_bom() {
-        assert!(encoder_emits_bom("utf-16le"));
-        assert!(encoder_emits_bom("utf-16be"));
-        assert!(!encoder_emits_bom("utf-8"));
-        assert!(!encoder_emits_bom("windows-1252"));
-    }
 
     #[test]
     fn utf16_is_never_double_prefixed_with_a_bom() {

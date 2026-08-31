@@ -119,7 +119,8 @@ fn press_enter_on_plain_line_is_insert_blank() {
 #[test]
 fn press_enter_on_bullet_continues_list() {
     let mut s = app();
-    s.load_text("t.txt", "- item", None);
+    s.load_text("t.txt", "item", None);
+    s.set_list_type(ListType::Bullet);
     let out = s.press_enter();
     // Continuing a list is not InsertBlank.
     assert!(!matches!(out, EnterOutcome::InsertBlank));
@@ -147,6 +148,9 @@ fn set_list_type_bullet() {
 fn set_list_type_number_assigns_counter() {
     let mut s = app();
     s.load_text("t.txt", "a\nb", None);
+    // List commands act on the selection; span both lines.
+    s.cursor.line = 1;
+    s.anchor = Some(0);
     s.set_list_type(ListType::Number);
     assert_eq!(s.doc().lines[0].number, 1);
     assert_eq!(s.doc().lines[1].number, 2);
@@ -340,6 +344,10 @@ fn extract_counts_lines_and_chars() {
 fn toggle_extract_colour() {
     let mut s = app();
     s.load_text("t.txt", "a", None);
+    // "yellow" starts selected, so the first toggle deselects it.
+    assert!(!s.toggle_extract_colour("yellow"));
+    assert!(!s.extract_selected.contains(&"yellow".to_string()));
+    // The second toggle selects it again.
     assert!(s.toggle_extract_colour("yellow"));
     assert!(s.extract_selected.contains(&"yellow".to_string()));
 }
@@ -421,7 +429,8 @@ fn save_active_as_note_and_reopen() {
     s.load_text("t.txt", "note body", None);
     let id = s.save_active_as_note().unwrap();
     assert!(id > 0);
-    let mut t = app();
+    // A second window over the SAME database (restart scenario).
+    let mut t = AppState::new(Settings::default(), s.db.clone());
     t.open_note(id).unwrap();
     assert!(t.doc().plain_text().contains("note body"));
 }
@@ -718,21 +727,25 @@ fn decode_roundtrips_utf16() {
 #[test]
 fn selection_range_orders_anchor_and_caret() {
     let mut s = app();
-    s.load_text("t.txt", "abcdef", None);
+    s.load_text("t.txt", "abc\ndef", None);
+    // Selections are line ranges (whole-line highlighting model).
+    s.cursor.line = 1;
+    s.anchor = Some(0);
+    assert_eq!(s.selection_range(), (0, 1));
+    // Reversed anchor/caret must normalise to the same range.
     s.cursor.line = 0;
-    s.cursor.col = 4;
     s.anchor = Some(1);
-    let (lo, hi) = s.selection_range();
-    assert_eq!((lo, hi), (1, 4));
+    assert_eq!(s.selection_range(), (0, 1));
 }
 
 #[test]
 fn selected_chars_counts_selection() {
     let mut s = app();
-    s.load_text("t.txt", "abcdef", None);
-    s.cursor.col = 4;
-    s.anchor = Some(1);
-    assert_eq!(s.selected_chars(), 3);
+    s.load_text("t.txt", "abc\ndef", None);
+    s.cursor.line = 1;
+    s.anchor = Some(0);
+    // 3 + 3 characters plus the newline joining the two lines.
+    assert_eq!(s.selected_chars(), 7);
 }
 
 #[test]

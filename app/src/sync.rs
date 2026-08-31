@@ -62,7 +62,7 @@ pub fn sync_flags(window: &AppWindow, state: &AppState) {
     window.set_selected_note_id(state.selected_note_id as i32);
     window.set_note_query(state.note_query.as_str().into());
     window.set_note_sort(state.settings.sidebar_sort.as_str().into());
-    window.set_extract_grouped(state.extract_grouped);
+    window.set_extract_grouped(state.settings.extract_order == "grouped");
     window.set_show_confirm(state.pending.is_some());
     window.set_picker_hex(state.picker_hex.as_str().into());
     window.set_picker_name(state.picker_name.as_str().into());

@@ -174,7 +174,6 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
         window.on_extract_order_changed(move |grouped| {
             {
                 let mut guard = lock(&s);
-                guard.extract_grouped = grouped;
                 guard.settings.extract_order = if grouped { "grouped" } else { "document" }.to_string();
             }
             if let Some(win) = w.upgrade() {
