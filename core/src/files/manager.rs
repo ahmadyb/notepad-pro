@@ -310,7 +310,8 @@ mod tests {
         let b = temp_sibling(Path::new("/tmp/notes.txt"));
         assert!(a.file_name().unwrap().to_string_lossy().starts_with('.'));
         assert!(a.to_string_lossy().ends_with(".tmp"));
-        assert!(a.to_string_lossy().starts_with("/tmp/"));
+        // Sibling check, expressed without a platform-specific prefix.
+        assert_eq!(a.parent(), Path::new("/tmp"), "the temp file must sit next to the original");
         assert_ne!(a, b, "consecutive temps must not collide");
     }
 
