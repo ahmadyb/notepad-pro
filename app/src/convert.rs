@@ -418,9 +418,9 @@ mod tests {
     fn note_roundtrip_preserves_the_optional_path() {
         let mut note = Note::new("T", "body");
         note.id = 3;
-        // Slint floats are f32; use exactly-representable timestamps.
+        // Slint floats are f32: near 1.7e9 only multiples of 128 are exact.
         note.created_at = 1_700_000_000.0;
-        note.modified_at = 1_700_000_500.0;
+        note.modified_at = 1_700_000_512.0;
         note.file_path = Some("/tmp/a.txt".into());
         let ui = note_to_ui_full(&note);
         assert_eq!(ui.file_path.as_str(), "/tmp/a.txt");

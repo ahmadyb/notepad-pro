@@ -24,9 +24,26 @@ pub fn create_pool(path: &Path) -> Result<SqlitePool> {
         .with_context(|| format!("cannot open notes database at {path_string}"))
 }
 
-/// In-memory pool, used by the test suite.
+/// In-memory pool, used by the test suite. Each call returns a pool over a
+/// fresh *shared* in-memory database: all four connections in the pool see
+/// the same rows, and different calls never see each other's data. (A bare
+/// `:memory:` manager would give every connection its own private db.)
 pub fn memory_pool() -> Result<SqlitePool> {
-    let manager = SqliteConnectionManager::memory().with_init(initialise);
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let name = format!(
+        "file:notepad_pro_test_{}_{}?mode=memory&cache=shared",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    );
+    let manager = SqliteConnectionManager::file(&name)
+        .with_flags(
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
+                | rusqlite::OpenFlags::SQLITE_OPEN_CREATE
+                | rusqlite::OpenFlags::SQLITE_OPEN_URI
+                | rusqlite::OpenFlags::SQLITE_OPEN_SHARED_CACHE,
+        )
+        .with_init(initialise);
     Pool::builder()
         .max_size(POOL_SIZE)
         .build(manager)

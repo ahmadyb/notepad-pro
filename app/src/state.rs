@@ -636,7 +636,7 @@ impl AppState {
 
     pub fn note_count_label(&self, shown: usize) -> String {
         let total = self.db.count().unwrap_or(0);
-        if self.note_query.trim().is_empty() || shown == total {
+        if shown == total {
             format!("{total} {}", if total == 1 { "note" } else { "notes" })
         } else {
             format!(
