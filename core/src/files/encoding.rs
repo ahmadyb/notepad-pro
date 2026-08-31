@@ -73,20 +73,10 @@ pub fn detect_encoding(raw: &[u8]) -> EncodingInfo {
             confidence: 1.0,
         };
     }
-    if std::str::from_utf8(raw).is_ok() {
-        return EncodingInfo {
-            label: "utf-8".into(),
-            has_bom: false,
-            bom_len: 0,
-            confidence: 1.0,
-        };
-    }
-
-    // BOM-less UTF-16: text in either order interleaves NUL bytes with the
-    // character payload (LE: NULs on odd indices, BE: on even ones). Only
-    // invalid UTF-8 reaches this point, and NULs this dense are otherwise
-    // unheard of in text encodings, so the pattern is distinctive enough
-    // for the same guess Notepad makes.
+    // BOM-less UTF-16, checked BEFORE UTF-8 validity: an all-ASCII UTF-16
+    // file ("h\0e\0l\0l\0o\0") is byte-for-byte valid UTF-8, so the
+    // validity check below would claim it. NULs this dense do not occur in
+    // real UTF-8 text; this is the same guess Notepad makes.
     let mut even_nuls = 0usize;
     let mut odd_nuls = 0usize;
     for (i, b) in raw.iter().enumerate() {
@@ -114,6 +104,15 @@ pub fn detect_encoding(raw: &[u8]) -> EncodingInfo {
                 confidence: 0.9,
             };
         }
+    }
+
+    if std::str::from_utf8(raw).is_ok() {
+        return EncodingInfo {
+            label: "utf-8".into(),
+            has_bom: false,
+            bom_len: 0,
+            confidence: 1.0,
+        };
     }
 
     let detected = chardet::detect(raw);
