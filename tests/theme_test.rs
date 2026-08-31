@@ -70,7 +70,7 @@ fn parse_hex(hex: &str) -> Option<(u8, u8, u8, f32)> {
             v(&hex[6..8], 16).ok()? as f32 / 255.0,
         )),
         _ => None,
-    )
+    }
 }
 
 fn luminance((r, g, b, _a): (u8, u8, u8, f32)) -> f32 {
