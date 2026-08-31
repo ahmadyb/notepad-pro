@@ -2,7 +2,7 @@
 //! (5 checks). These guard the session/settings load path against corrupt or
 //! forward-incompatible files.
 
-use notepad_pro_core::config::session::Session;
+use notepad_pro_core::types::api::Session;
 use notepad_pro_core::types::api::TabState;
 use notepad_pro_core::types::note::Note;
 

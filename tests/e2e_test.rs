@@ -7,7 +7,7 @@
 use notepad_pro::state::AppState;
 use notepad_pro_core::config::settings::Settings;
 use notepad_pro_core::db::notes::NotesDb;
-use notepad_pro_core::editor::list_engine::{self, EnterOutcome};
+use notepad_pro_core::editor::list_engine::{self, EnterOutcome, ListEngine};
 use notepad_pro_core::files::{encoding, line_endings::LineEnding};
 use notepad_pro_core::highlight::{extractor, palette::Palette, stats};
 use notepad_pro_core::types::line::{LineColour, ListType};
@@ -99,7 +99,7 @@ fn set_line_text_marks_dirty() {
     let mut s = app();
     s.load_text("t.txt", "a", None);
     assert!(s.set_line_text(0, "b"));
-    assert!(s.is_dirty());
+    assert!(s.tab().is_dirty());
 }
 
 #[test]
@@ -618,15 +618,15 @@ fn stats_count_highlights() {
 
 #[test]
 fn bullet_glyphs_follow_depth() {
-    assert_eq!(list_engine::bullet_glyph(0), "•");
-    assert_eq!(list_engine::bullet_glyph(1), "◦");
-    assert_eq!(list_engine::bullet_glyph(2), "▪");
-    assert_eq!(list_engine::bullet_glyph(3), "‣");
+    assert_eq!(ListEngine::bullet_glyph(0), "•");
+    assert_eq!(ListEngine::bullet_glyph(1), "◦");
+    assert_eq!(ListEngine::bullet_glyph(2), "▪");
+    assert_eq!(ListEngine::bullet_glyph(3), "‣");
 }
 
 #[test]
 fn bullet_glyph_clamps_past_max_depth() {
-    assert_eq!(list_engine::bullet_glyph(9), "‣");
+    assert_eq!(ListEngine::bullet_glyph(9), "‣");
 }
 
 #[test]
@@ -644,7 +644,7 @@ fn renumber_resets_on_non_number_line() {
             l
         },
     ];
-    list_engine::renumber(&mut lines);
+    ListEngine::renumber(&mut lines);
     assert_eq!(lines[0].number, 1);
     assert_eq!(lines[2].number, 1, "counter resets after a plain line");
 }
@@ -653,7 +653,7 @@ fn renumber_resets_on_non_number_line() {
 fn markdown_check_shortcut() {
     let mut l = line("[] ", LineColour::None);
     l.text = "[] todo".into();
-    assert!(list_engine::try_markdown_shortcut(&mut l));
+    assert!(ListEngine::try_markdown_shortcut(&mut l));
     assert_eq!(l.list_type, ListType::Check);
 }
 
