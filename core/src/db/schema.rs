@@ -24,9 +24,7 @@ CREATE INDEX IF NOT EXISTS idx_modified
 CREATE INDEX IF NOT EXISTS idx_pinned
     ON notes (pinned DESC, modified_at DESC);
 
-CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
-    title, content, content='notes', content_rowid='id'
-);
+CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(title, content);
 ";
 
 /// Fallback DDL used when the FTS5 module is not compiled into SQLite.

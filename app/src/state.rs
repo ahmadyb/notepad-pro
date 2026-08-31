@@ -383,8 +383,31 @@ impl AppState {
     // ── Feature 1 & 2: highlighting ───────────────────────────────────────
 
     /// Resolve a palette key, adding unknown `#rrggbb` keys on the fly.
-    pub fn colour_for_key(&self, key: &str) -> Option<LineColour> {
-        self.palette.find(key)
+    pub fn colour_for_key(&mut self, key: &str) -> Option<LineColour> {
+        if let Some(found) = self.palette.find(key) {
+            return Some(found);
+        }
+        // A `#rgb`/`#rrggbb`/`#rrggbbaa` key creates a custom colour on the
+        // fly (feature 2 — unlimited custom colours).
+        let hex = key.strip_prefix('#')?;
+        if !matches!(hex.len(), 3 | 6 | 8) {
+            return None;
+        }
+        let expanded = if hex.len() == 3 {
+            hex.chars().map(|c| format!("{c}{c}")).collect::<String>()
+        } else {
+            hex.to_string()
+        };
+        let rgba = u32::from_str_radix(&expanded, 16).ok()?;
+        let rgba = if expanded.len() == 6 { (rgba << 8) | 0xff } else { rgba };
+        if !self.palette.custom_colours().iter().any(|c| c.rgba == rgba) {
+            self.palette.add_custom(CustomColour {
+                name: format!("#{expanded}"),
+                hex: format!("#{}", &expanded[..6.min(expanded.len())]),
+                rgba,
+            });
+        }
+        Some(LineColour::Custom(rgba))
     }
 
     /// Feature 1 — toggle the colour on the current selection.
@@ -1224,8 +1247,8 @@ mod tests {
         s.set_find_query("cat");
         assert_eq!(s.find.match_count(), 3);
         let m = s.find_next().unwrap();
-        assert_eq!(m.line, 1, "next from the first match is on line 1");
-        assert_eq!(s.cursor.line, 1);
+        assert_eq!((m.line, m.start), (0, 4), "next advances to the second match");
+        assert_eq!(s.cursor.line, 0);
     }
 
     #[test]

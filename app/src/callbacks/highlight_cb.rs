@@ -346,8 +346,8 @@ mod tests {
         assert_eq!(civil_from_days(0), (1970, 1, 1));
         // 2000-03-01 is day 11017.
         assert_eq!(civil_from_days(11_017), (2000, 3, 1));
-        // 2024-02-29 (a leap day) is day 19781.
-        assert_eq!(civil_from_days(19_781), (2024, 2, 29));
+        // 2024-02-29 (a leap day) is day 19782.
+        assert_eq!(civil_from_days(19_782), (2024, 2, 29));
     }
 
     #[test]
