@@ -73,11 +73,20 @@ fn double_click_toggles_maximise() {
 }
 
 #[test]
-fn close_request_is_intercepted_and_rejected() {
+fn close_button_is_intercepted_not_quit_directly() {
+    // Slint 1.6's Window has no `close-requested` interception, so the
+    // unsaved-changes guard sits behind the custom close button: the markup
+    // must route through the `close-window` callback, never a direct quit,
+    // and nothing may fake a handler the platform does not provide.
     let src = app_slint();
-    let at = src.find("close-requested =>").expect("handler present");
-    let block = &src[at..at + 80];
-    assert!(block.contains("reject"), "raw close must be rejected: {block}");
+    assert!(
+        src.contains("root.close-window();"),
+        "the close button must call the Rust close-window callback"
+    );
+    assert!(
+        !src.contains("close-requested =>"),
+        "Slint 1.6 has no close-requested handler; nothing may fake one"
+    );
 }
 
 #[test]
@@ -145,11 +154,24 @@ fn move_window_is_wired_to_the_drag_region() {
 }
 
 #[test]
-fn close_request_delegates_to_rust() {
-    let src = app_slint();
-    let at = src.find("close-requested =>").expect("handler present");
-    let block = &src[at..at + 80];
-    assert!(block.contains("root.close-window();"), "must route through Rust: {block}");
+fn rust_close_handler_checks_dirty_tabs_before_quitting() {
+    // The Rust half of the interception: `on_close_window` -> `request_close`,
+    // which prompts via the confirm dialog before discarding unsaved tabs.
+    let rs = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("callbacks")
+            .join("window_cb.rs"),
+    )
+    .unwrap();
+    assert!(rs.contains("on_close_window"), "close-window callback must be registered");
+    let at = rs.find("pub fn request_close").expect("request_close present");
+    let block = &rs[at..at + 400];
+    assert!(block.contains("any_dirty()"), "close must check for unsaved tabs");
+    assert!(
+        block.contains("PendingAction::CloseApp"),
+        "a dirty close must go through the confirm dialog"
+    );
 }
 
 // ── normalize_key ─────────────────────────────────────────────────────────
