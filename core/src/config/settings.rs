@@ -99,8 +99,24 @@ impl Settings {
                     tracing::debug!(key = %key, "ignoring unknown settings key");
                 }
             }
+            // A hand-edited number outside the Rust type's range (fontSize
+            // 500 against a u8 field) must not sink the whole document:
+            // coerce the known integer fields into range first; `clamp`
+            // applies the user-facing ranges afterwards.
+            if let Some(v) = base_map.get_mut("fontSize") {
+                if let Some(n) = v.as_i64() {
+                    *v = serde_json::json!(n.clamp(0, 255));
+                }
+            }
+            if let Some(v) = base_map.get_mut("autosaveIntervalSecs") {
+                if let Some(n) = v.as_i64() {
+                    *v = serde_json::json!(n.clamp(0, u32::MAX as i64));
+                }
+            }
         }
-        serde_json::from_value(base).unwrap_or_default()
+        let mut settings: Settings = serde_json::from_value(base).unwrap_or_default();
+        settings.clamp();
+        settings
     }
 
     /// Atomic write (temp file + rename).
@@ -259,6 +275,14 @@ mod tests {
         assert_eq!(s.font_size, 72);
         assert_eq!(s.zoom, 3.0);
         assert_eq!(s.autosave_interval_secs, 1);
+    }
+
+    #[test]
+    fn one_bad_value_does_not_sink_the_rest_of_the_file() {
+        let s = Settings::from_json(r#"{"theme":"dark","fontSize":500,"zoom":99}"#);
+        assert_eq!(s.theme, "dark", "valid keys survive a bad sibling");
+        assert_eq!(s.font_size, 72);
+        assert_eq!(s.zoom, 3.0);
     }
 
     #[test]

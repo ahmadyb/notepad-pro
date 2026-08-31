@@ -82,6 +82,40 @@ pub fn detect_encoding(raw: &[u8]) -> EncodingInfo {
         };
     }
 
+    // BOM-less UTF-16: text in either order interleaves NUL bytes with the
+    // character payload (LE: NULs on odd indices, BE: on even ones). Only
+    // invalid UTF-8 reaches this point, and NULs this dense are otherwise
+    // unheard of in text encodings, so the pattern is distinctive enough
+    // for the same guess Notepad makes.
+    let mut even_nuls = 0usize;
+    let mut odd_nuls = 0usize;
+    for (i, b) in raw.iter().enumerate() {
+        if *b == 0 {
+            if i % 2 == 0 {
+                even_nuls += 1;
+            } else {
+                odd_nuls += 1;
+            }
+        }
+    }
+    if raw.len() >= 4 && (even_nuls + odd_nuls) * 4 >= raw.len() {
+        let label = if odd_nuls > even_nuls {
+            "utf-16le"
+        } else if even_nuls > odd_nuls {
+            "utf-16be"
+        } else {
+            ""
+        };
+        if !label.is_empty() {
+            return EncodingInfo {
+                label: label.into(),
+                has_bom: false,
+                bom_len: 0,
+                confidence: 0.9,
+            };
+        }
+    }
+
     let detected = chardet::detect(raw);
     let mapped = chardet::charset2encoding(&detected.0);
     let label = if mapped.is_empty() {
@@ -317,6 +351,16 @@ mod tests {
             confidence: 1.0,
         };
         assert_eq!(decode(&bytes, &info), "\u{3053}\u{3093}\u{306b}\u{3061}\u{306f}");
+    }
+
+    #[test]
+    fn bomless_utf16le_is_detected_by_the_nul_interleave() {
+        let raw = encode("hello", "utf-16le", false);
+        assert!(!raw.starts_with(&[0xFF, 0xFE]));
+        let info = detect_encoding(&raw);
+        assert_eq!(info.label, "utf-16le");
+        assert!(!info.has_bom);
+        assert_eq!(decode(&raw, &info), "hello");
     }
 
     #[test]
