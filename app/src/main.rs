@@ -216,7 +216,8 @@ mod tests {
 
     #[test]
     fn the_phase_wraps_at_one() {
-        // 20 fps for 32 s must land exactly on a full turn.
+        // 20 fps for 32 s is one full turn. 1/640 is not a binary fraction,
+        // so f32 accumulation lands within one step of either end.
         let mut phase = 0.0f32;
         for _ in 0..640 {
             phase += 0.0015625;
@@ -224,8 +225,11 @@ mod tests {
                 phase -= 1.0;
             }
         }
-        assert!(phase < 1.0);
-        assert!(phase < 0.01, "one turn should end where it started, got {phase}");
+        assert!((0.0..1.0).contains(&phase));
+        assert!(
+            phase < 0.01 || phase > 0.99,
+            "one turn should end where it started, got {phase}"
+        );
     }
 
     #[test]
