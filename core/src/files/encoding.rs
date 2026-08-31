@@ -122,34 +122,60 @@ pub fn bom_bytes(label: &str) -> &'static [u8] {
         "UTF-8" => &[0xEF, 0xBB, 0xBF],
         "UTF-16LE" => &[0xFF, 0xFE],
         "UTF-16BE" => &[0xFE, 0xFF],
-        "UTF-32LE" => &[0xFF, 0xFE, 0x00, 0x00],
-        "UTF-32BE" => &[0x00, 0x00, 0xFE, 0xFF],
+        // encoding_rs has no UTF-32 encodings at all, so no arms are needed
+        // here; `detect_encoding` may still *report* utf-32 from BOM sniffing.
         _ => &[],
     }
 }
 
 /// Encode a `String`, prepending the encoding's BOM when `with_bom` is set.
 ///
-/// Note: the non-streaming `Encoding::encode` must NOT be used here. For
-/// UTF-16/UTF-32 (and replacement) it silently substitutes the WHATWG
-/// *output encoding* — UTF-8 — and returns plain UTF-8 bytes without a
-/// BOM. The streaming encoder always writes the real encoding.
+/// Note: neither the non-streaming `Encoding::encode` NOR `new_encoder()`
+/// may be used for UTF-16 — both silently substitute the WHATWG *output
+/// encoding* (UTF-8 for UTF-16 and replacement), and encoding_rs ships no
+/// UTF-16 encoder on purpose. UTF-16 output is therefore emitted directly
+/// from `str::encode_utf16`; every other label goes through the streaming
+/// encoder, whose output encoding equals the real encoding.
 pub fn encode(text: &str, label: &str, with_bom: bool) -> Vec<u8> {
     let encoding = encoding_for_label(label);
     let mut out: Vec<u8> = Vec::with_capacity(text.len() * 2 + 4);
     if with_bom {
         out.extend_from_slice(bom_bytes(label));
     }
-    let mut encoder = encoding.new_encoder();
-    let mut total_read = 0usize;
-    loop {
-        let (result, read, _had_errors) =
-            encoder.encode_from_utf8_to_vec(&text[total_read..], &mut out, true);
-        total_read += read;
-        match result {
-            encoding_rs::CoderResult::InputEmpty => break,
-            // The Vec target grows on demand; loop to finish the input.
-            encoding_rs::CoderResult::OutputFull => continue,
+    match encoding.name() {
+        // encoding_rs deliberately provides NO UTF-16 encoders: both
+        // `Encoding::encode` and `new_encoder()` substitute the WHATWG
+        // *output encoding* (UTF-8). Emit the UTF-16 code units directly;
+        // `str::encode_utf16` produces well-formed surrogate pairs.
+        "UTF-16LE" => {
+            for unit in text.encode_utf16() {
+                out.extend_from_slice(&unit.to_le_bytes());
+            }
+        }
+        "UTF-16BE" => {
+            for unit in text.encode_utf16() {
+                out.extend_from_slice(&unit.to_be_bytes());
+            }
+        }
+        _ => {
+            let mut encoder = encoding.new_encoder();
+            let mut total_read = 0usize;
+            loop {
+                let (result, read, _had_errors) =
+                    encoder.encode_from_utf8_to_vec(&text[total_read..], &mut out, true);
+                total_read += read;
+                match result {
+                    encoding_rs::CoderResult::InputEmpty => break,
+                    // `encode_from_utf8_to_vec` only fills existing spare
+                    // capacity — growing encodings (e.g. ISO-2022-JP escape
+                    // sequences) exhaust it; reserve more and loop. Without
+                    // this the loop would spin on a full Vec.
+                    encoding_rs::CoderResult::OutputFull => {
+                        out.reserve(out.len().max(64));
+                        continue;
+                    }
+                }
+            }
         }
     }
     out
@@ -241,10 +267,14 @@ mod tests {
 
     #[test]
     fn decode_handles_utf16le() {
-        let text = "hi";
-        let (bytes, _, _) = encoding_rs::UTF_16LE.encode(text);
-        let raw = [&[0xFF, 0xFE][..], bytes.as_ref()].concat();
+        // NOTE: build the sample with our own encoder — `encoding_rs`
+        // deliberately has no UTF-16 encoder (its `Encoding::encode`
+        // substitutes the UTF-8 output encoding), so the crate helper
+        // is the only honest source of UTF-16 bytes here.
+        let raw = encode("hi", "utf-16le", true);
+        assert_eq!(&raw[..2], &[0xFF, 0xFE]);
         let info = detect_encoding(&raw);
+        assert_eq!(info.label, "utf-16le");
         assert_eq!(decode(&raw, &info), "hi");
     }
 
@@ -272,6 +302,21 @@ mod tests {
         let bytes = encode("hello", "utf-8", true);
         assert!(bytes.starts_with(&[0xEF, 0xBB, 0xBF]));
         assert_eq!(decode(&bytes, &detect_encoding(&bytes)), "hello");
+    }
+
+    #[test]
+    fn streaming_encoder_handles_growing_encodings() {
+        // The `_` branch of `encode()`: a real (non-output-encoding) encoder
+        // whose output can be longer than the UTF-8 source.
+        let bytes = encode("\u{3053}\u{3093}\u{306b}\u{3061}\u{306f}", "iso-2022-jp", false);
+        assert_ne!(bytes, "\u{3053}\u{3093}\u{306b}\u{3061}\u{306f}".as_bytes());
+        let info = EncodingInfo {
+            label: "iso-2022-jp".into(),
+            has_bom: false,
+            bom_len: 0,
+            confidence: 1.0,
+        };
+        assert_eq!(decode(&bytes, &info), "\u{3053}\u{3093}\u{306b}\u{3061}\u{306f}");
     }
 
     #[test]
