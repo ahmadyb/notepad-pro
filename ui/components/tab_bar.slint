@@ -1,0 +1,122 @@
+// ui/components/tab_bar.slint
+//
+// Horizontal tab strip: fixed-width tabs, an animated gradient underline on
+// the active one, a dirty dot, and a per-tab close button.
+
+import { AppTheme } from "../themes/tokens.slint";
+import { TabData } from "../model.slint";
+
+export component TabBar inherits Rectangle {
+    in property <[TabData]> tabs;
+    in property <int> active-index: 0;
+    callback tab-clicked(int);
+    callback tab-closed(int);
+    callback new-tab();
+
+    height: 38px;
+    background: AppTheme.toolbar-bg;
+    clip: true;
+
+    HorizontalLayout {
+        alignment: start;
+        spacing: 2px;
+        padding: 4px;
+
+        for tab[i] in root.tabs : tab-root := Rectangle {
+            property <bool> is-active: i == root.active-index;
+
+            width: 168px;
+            height: 30px;
+            border-radius: AppTheme.radius-sm;
+            clip: true;
+            background: tab-root.is-active
+                ? AppTheme.tab-active-bg
+                : (tab-touch.has-hover ? AppTheme.surface-hover : transparent);
+            animate background { duration: AppTheme.fast; easing: ease-out; }
+
+            // Click target sits under the content; the close button raises
+            // itself above with an explicit z (bug #2: stacking surprises).
+            tab-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.tab-clicked(i); }
+            }
+
+            // Active underline
+            Rectangle {
+                y: parent.height - 2px;
+                height: 2px;
+                width: tab-root.is-active ? parent.width : 0px;
+                background: @linear-gradient(90deg, AppTheme.accent-colour, AppTheme.accent-colour-2);
+                animate width { duration: AppTheme.normal; easing: ease-out; }
+            }
+
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 6px;
+                spacing: 6px;
+                alignment: start;
+
+                Text {
+                    text: tab.name;
+                    color: tab-root.is-active ? AppTheme.text-strong : AppTheme.text-muted;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+
+                Text {
+                    text: "●";
+                    color: AppTheme.accent-colour;
+                    font-size: 7px;
+                    visible: tab.dirty;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    z: 5;
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 9px;
+                    background: close-touch.has-hover ? AppTheme.danger-colour : transparent;
+                    animate background { duration: AppTheme.fast; }
+
+                    Text {
+                        text: "✕";
+                        font-size: 10px;
+                        color: close-touch.has-hover ? AppTheme.accent-text : AppTheme.text-muted;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    close-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.tab-closed(i); }
+                    }
+                }
+            }
+        }
+
+        // New tab
+        Rectangle {
+            width: 30px;
+            height: 30px;
+            border-radius: AppTheme.radius-sm;
+            background: new-touch.has-hover ? AppTheme.surface-hover : transparent;
+            animate background { duration: AppTheme.fast; }
+
+            Text {
+                text: "+";
+                color: AppTheme.text-muted;
+                font-size: 16px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            new-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.new-tab(); }
+            }
+        }
+    }
+}

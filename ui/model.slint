@@ -1,0 +1,175 @@
+// ui/model.slint
+//
+// Every struct and enum that crosses the Rust <-> Slint boundary.
+//
+// These live in their own file (rather than in app.slint as the original
+// specification had it) because app.slint imports editor.slint, which needs
+// EditorLineData. Putting the data types in a leaf module keeps the import
+// graph acyclic.
+//
+// Rust field names are the snake_case form of these: `list-type` -> `list_type`.
+
+// ── Editor ────────────────────────────────────────────────────────────────
+
+export enum LineColour {
+    None,
+    Yellow,
+    Green,
+    Pink,
+    Blue,
+    Orange,
+    Purple,
+    Custom,
+}
+
+export enum ListType {
+    None,
+    Bullet,
+    Number,
+    Check,
+}
+
+export struct EditorLineData {
+    // Text shown in the TextInput.
+    text: string,
+    colour: LineColour,
+    // Resolved swatch colour for the band and the accent bar. Rust looks the
+    // palette up so custom colours work without a Slint-side map.
+    accent: color,
+    list-type: ListType,
+    // Pre-rendered marker: "•", "◦", "3." or "" for a checkbox / plain line.
+    marker: string,
+    indent: int,
+    checked: bool,
+    selected: bool,
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────
+
+export struct TabData {
+    id: string,
+    name: string,
+    path: string,
+    dirty: bool,
+}
+
+// ── Notes sidebar ─────────────────────────────────────────────────────────
+
+export struct NoteMetadataData {
+    id: int,
+    title: string,
+    snippet: string,
+    modified-label: string,
+    pinned: bool,
+    // Up to four highlight chips. Slint structs cannot hold arrays, so the
+    // chips are flattened into fixed slots plus a count.
+    chip-a: color,
+    chip-b: color,
+    chip-c: color,
+    chip-d: color,
+    chip-count: int,
+}
+
+export struct NoteData {
+    id: int,
+    title: string,
+    content: string,
+    highlights-json: string,
+    list-structure-json: string,
+    file-path: string,
+    pinned: bool,
+    created-at: float,
+    modified-at: float,
+}
+
+// ── Highlighting / extraction ─────────────────────────────────────────────
+
+export struct ColourEntry {
+    // Key understood by LineColour::from_key on the Rust side.
+    key: string,
+    name: string,
+    colour: color,
+    line-count: int,
+    // "3 lines" — formatted in Rust.
+    count-label: string,
+    active: bool,
+}
+
+export struct HighlightStats {
+    total-lines: int,
+    highlighted: int,
+    // "Yellow 3 · Green 1"
+    summary: string,
+}
+
+// ── Settings / session / status ───────────────────────────────────────────
+
+export struct SettingsData {
+    theme: string,
+    font-family: string,
+    font-size: int,
+    word-wrap: bool,
+    zoom: float,
+    animations: bool,
+    sidebar-open: bool,
+    sidebar-sort: string,
+    autosave-interval-secs: int,
+    extract-order: string,
+    native-frame: bool,
+}
+
+export struct SessionData {
+    ok: bool,
+    tab-count: int,
+    active-tab: int,
+}
+
+export struct StatusData {
+    // "Ln 4, Col 12" / "Ln 4, Col 12    7 selected"
+    caret-text: string,
+    // "312 words · 1,804 chars · 41 lines"
+    metrics-text: string,
+    // "4 highlights"
+    highlight-text: string,
+    // "125%"
+    zoom-text: string,
+    line-ending: string,
+    encoding: string,
+    dirty: bool,
+    // "Unsaved changes" / "Saved"
+    saved-text: string,
+    cursor-line: int,
+    cursor-col: int,
+    selected-chars: int,
+    word-count: int,
+    char-count: int,
+    line-count: int,
+    highlight-count: int,
+    zoom: float,
+}
+
+// ── Files ─────────────────────────────────────────────────────────────────
+
+export struct LoadedFileData {
+    ok: bool,
+    error: string,
+    path: string,
+    content: string,
+    encoding: string,
+    line-ending: string,
+}
+
+// ── Window / meta ─────────────────────────────────────────────────────────
+
+export struct WindowStateData {
+    maximised: bool,
+    minimised: bool,
+    fullscreen: bool,
+}
+
+export struct AppInfo {
+    name: string,
+    version: string,
+    data-dir: string,
+    slint-backend: string,
+}

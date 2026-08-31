@@ -1,0 +1,123 @@
+// ui/find_bar.slint
+//
+// Find & replace strip. The replace row slides open, and the whole panel
+// animates its height.
+
+import { AppTheme } from "themes/tokens.slint";
+import { GhostButton, RippleButton } from "animations.slint";
+
+export component FindBar inherits Rectangle {
+    in-out property <string> query;
+    in-out property <string> replacement;
+    // Pre-formatted in Rust: "3 / 17" or "No matches".
+    in property <string> counter: "";
+    in property <bool> case-sensitive: false;
+    in property <bool> whole-word: false;
+    in property <bool> show-replace: false;
+    in property <int> match-total: 0;
+
+    callback query-changed(string);
+    callback replacement-changed(string);
+    callback next-match();
+    callback prev-match();
+    callback replace-one();
+    callback replace-all();
+    callback case-toggled();
+    callback word-toggled();
+    callback close();
+
+    height: root.show-replace ? 78px : 42px;
+    background: AppTheme.toolbar-bg;
+    border-color: AppTheme.border-colour;
+    clip: true;
+    animate height { duration: AppTheme.normal; easing: ease-out; }
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 4px;
+        alignment: start;
+
+        // ── Find row ──────────────────────────────────────────────────────
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+
+            Rectangle {
+                width: 260px;
+                height: 28px;
+                border-radius: AppTheme.radius-sm;
+                background: AppTheme.input-bg;
+                border-width: 1px;
+                border-color: find-input.has-focus ? AppTheme.accent-colour : AppTheme.border-colour;
+                animate border-color { duration: AppTheme.fast; }
+
+                find-input := TextInput {
+                    x: 10px;
+                    width: parent.width - 20px;
+                    height: parent.height;
+                    text: root.query;
+                    font-size: 13px;
+                    color: AppTheme.editor-text;
+                    single-line: true;
+                    vertical-alignment: center;
+                    edited => { root.query-changed(self.text); }
+                    accepted => { root.next-match(); }
+                }
+            }
+
+            Text {
+                text: root.counter;
+                color: root.match-total == 0 && root.query != "" ? AppTheme.danger-colour : AppTheme.text-muted;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+
+            GhostButton { label: "Aa"; toggled: root.case-sensitive; min-width: 30px;
+                          clicked => { root.case-toggled(); } }
+            GhostButton { label: "ab"; toggled: root.whole-word; min-width: 30px;
+                          clicked => { root.word-toggled(); } }
+            GhostButton { label: "↑"; min-width: 30px; clicked => { root.prev-match(); } }
+            GhostButton { label: "↓"; min-width: 30px; clicked => { root.next-match(); } }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            GhostButton { label: "✕"; min-width: 28px; clicked => { root.close(); } }
+        }
+
+        // ── Replace row ───────────────────────────────────────────────────
+        if root.show-replace : HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+
+            Rectangle {
+                width: 260px;
+                height: 28px;
+                border-radius: AppTheme.radius-sm;
+                background: AppTheme.input-bg;
+                border-width: 1px;
+                border-color: repl-input.has-focus ? AppTheme.accent-colour : AppTheme.border-colour;
+                animate border-color { duration: AppTheme.fast; }
+
+                repl-input := TextInput {
+                    x: 10px;
+                    width: parent.width - 20px;
+                    height: parent.height;
+                    text: root.replacement;
+                    font-size: 13px;
+                    color: AppTheme.editor-text;
+                    single-line: true;
+                    vertical-alignment: center;
+                    edited => { root.replacement-changed(self.text); }
+                }
+            }
+
+            RippleButton {
+                label: "Replace";
+                btn-colour: AppTheme.surface;
+                label-colour: AppTheme.text-colour;
+                clicked => { root.replace-one(); }
+            }
+            RippleButton { label: "Replace All"; clicked => { root.replace-all(); } }
+        }
+    }
+}

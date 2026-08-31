@@ -1,0 +1,62 @@
+[workspace]
+resolver = "2"
+members = ["app", "core"]
+
+[workspace.package]
+version = "1.0.2-slint"
+edition = "2021"
+rust-version = "1.78.0"
+license = "MIT"
+authors = ["NotePad Pro contributors"]
+repository = "https://github.com/ahmadyb/notepad-pro"
+
+[workspace.dependencies]
+# --- UI -------------------------------------------------------------------
+# Pinned exactly so the code compiles against the Slint it was written for;
+# `slint = "1.6"` would float to 1.17 and drag in API drift.
+slint = "=1.6.0"
+slint-build = "=1.6.0"
+
+# --- Persistence ----------------------------------------------------------
+rusqlite = { version = "0.31", features = ["bundled", "backup"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.24"
+
+# --- Serde ----------------------------------------------------------------
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# --- Platform integration -------------------------------------------------
+arboard = "3"
+encoding_rs = "0.8"
+chardet = "0.2"
+dirs = "5"
+rfd = "0.14"
+clap = { version = "4", features = ["derive"] }
+
+# --- Error handling / diagnostics ----------------------------------------
+anyhow = "1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# --- Test-only ------------------------------------------------------------
+tempfile = "3"
+
+# NOTE: the original specification listed `tokio`. NotePad Pro is a
+# synchronous desktop application: every callback runs on the Slint event
+# loop and the autosave loop is a plain `std::thread` that marshals work
+# back with `slint::invoke_from_event_loop`. Adding an async runtime would
+# ship ~1.5 MB of unused code, so it was dropped. See DEVIATIONS.md.
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.release-debug]
+inherits = "release"
+strip = false
+debug = true

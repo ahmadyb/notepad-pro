@@ -1,0 +1,152 @@
+// ui/sidebar.slint
+//
+// Feature 5 — the notes sidebar backed by SQLite.
+
+import { AppTheme } from "themes/tokens.slint";
+import { NoteMetadataData } from "model.slint";
+import { NoteCard } from "components/note_card.slint";
+import { GhostButton, RippleButton } from "animations.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component Sidebar inherits Rectangle {
+    in property <[NoteMetadataData]> notes;
+    in property <int> selected-id: -1;
+    in-out property <string> query;
+    in property <string> sort;
+    in property <int> note-count: 0;
+    // Pre-formatted in Rust: "12 notes" / "3 of 12 notes".
+    in property <string> count-label: "";
+
+    callback query-changed(string);
+    callback note-clicked(int);
+    callback pin-clicked(int);
+    callback delete-clicked(int);
+    callback new-note();
+    callback sort-chosen(string);
+    callback close();
+
+    background: AppTheme.sidebar-bg;
+    border-color: AppTheme.border-colour;
+    clip: true;
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 8px;
+
+        // ── Header ────────────────────────────────────────────────────────
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+
+            Text {
+                text: "Notes";
+                color: AppTheme.text-strong;
+                font-size: 14px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            GhostButton { label: "✕"; min-width: 26px; clicked => { root.close(); } }
+        }
+
+        // ── Search ────────────────────────────────────────────────────────
+        Rectangle {
+            height: 32px;
+            border-radius: AppTheme.radius-sm;
+            background: AppTheme.input-bg;
+            border-width: 1px;
+            border-color: search-input.has-focus ? AppTheme.accent-colour : AppTheme.border-colour;
+            animate border-color { duration: AppTheme.fast; }
+
+            search-input := TextInput {
+                x: 10px;
+                y: 0px;
+                width: parent.width - 40px;
+                height: parent.height;
+                text: root.query;
+                font-size: 13px;
+                color: AppTheme.editor-text;
+                single-line: true;
+                vertical-alignment: center;
+                edited => { root.query-changed(self.text); }
+            }
+
+            if root.query == "" && !search-input.has-focus : Text {
+                x: 10px;
+                text: "Search notes…";
+                color: AppTheme.text-muted;
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+
+            if root.query != "" : Rectangle {
+                x: parent.width - 26px;
+                y: (parent.height - 20px) / 2;
+                width: 20px;
+                height: 20px;
+                border-radius: 10px;
+                background: clear-touch.has-hover ? AppTheme.surface-hover : transparent;
+                Text {
+                    text: "✕";
+                    font-size: 10px;
+                    color: AppTheme.text-muted;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                clear-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.query-changed(""); }
+                }
+            }
+        }
+
+        // ── Sort + new ────────────────────────────────────────────────────
+        HorizontalLayout {
+            spacing: 4px;
+            alignment: start;
+            GhostButton { label: "Recent"; toggled: root.sort == "modified"; clicked => { root.sort-chosen("modified"); } }
+            GhostButton { label: "A–Z"; toggled: root.sort == "title"; clicked => { root.sort-chosen("title"); } }
+            GhostButton { label: "Oldest"; toggled: root.sort == "created"; clicked => { root.sort-chosen("created"); } }
+            Rectangle { horizontal-stretch: 1; }
+            GhostButton { label: "+ New"; clicked => { root.new-note(); } }
+        }
+
+        Text {
+            text: root.count-label;
+            color: AppTheme.text-muted;
+            font-size: 11px;
+        }
+
+        // ── List ──────────────────────────────────────────────────────────
+        ScrollView {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                spacing: 6px;
+                alignment: start;
+
+                for entry in root.notes : NoteCard {
+                    note: entry;
+                    selected: entry.id == root.selected-id;
+                    clicked => { root.note-clicked(entry.id); }
+                    pin-clicked => { root.pin-clicked(entry.id); }
+                    delete-clicked => { root.delete-clicked(entry.id); }
+                }
+            }
+        }
+
+        if root.notes.length == 0 : Rectangle {
+            height: 70px;
+            border-radius: AppTheme.radius-md;
+            background: AppTheme.surface;
+            Text {
+                text: root.query == "" ? "No notes yet.\nPress + New to start."
+                                       : "No notes match that search.";
+                color: AppTheme.text-muted;
+                font-size: 12px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}

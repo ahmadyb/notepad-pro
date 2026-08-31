@@ -1,0 +1,84 @@
+// ui/themes/neu_light.slint — Neumorphism Light
+//
+// Neumorphism has no borders at all: every surface is defined by a light
+// shadow top-left and a dark shadow bottom-right. `NeuControl` below is the
+// reusable raised/pressed pair.
+
+import { AppTheme } from "tokens.slint";
+
+export global NeuLightTheme {
+    public function apply() {
+        // Backgrounds — everything sits on one flat colour.
+        AppTheme.window-bg = #e0e5ec;
+        AppTheme.toolbar-bg = #e0e5ec;
+        AppTheme.editor-bg = #e0e5ec;
+        AppTheme.sidebar-bg = #e0e5ec;
+        AppTheme.panel-bg = #e0e5ec;
+        AppTheme.surface = #e0e5ec;
+        AppTheme.surface-hover = #d7dce5;
+        AppTheme.card-bg = #e0e5ec;
+        AppTheme.card-active = #d8dee8;
+        AppTheme.code-bg = #d9dfe8;
+        AppTheme.input-bg = #d9dfe8;
+        AppTheme.tab-bg = #e0e5ec;
+        AppTheme.tab-active-bg = #d8dee8;
+
+        // Text
+        AppTheme.text-colour = #4a5568;
+        AppTheme.text-muted = #7c8aa0;
+        AppTheme.text-strong = #2d3748;
+        AppTheme.editor-text = #3d4759;
+        AppTheme.editor-text-on-highlight = #1b1f2a;
+        AppTheme.tooltip-text = #ffffff;
+        AppTheme.tooltip-bg = #4a5568;
+        AppTheme.caret-colour = #4a5568;
+        AppTheme.selection-colour = #6366f140;
+
+        // Accents
+        AppTheme.accent-colour = #5b6ee0;
+        AppTheme.accent-colour-2 = #7c5ce0;
+        AppTheme.accent-text = #ffffff;
+        AppTheme.danger-colour = #d63447;
+        AppTheme.success-colour = #159a53;
+        AppTheme.warning-colour = #c47f12;
+
+        // Depth — borders disappear, shadows do the work.
+        AppTheme.border-colour = #e0e5ec00;
+        AppTheme.shadow-colour = #a3b1c640;
+        AppTheme.shadow-light = #ffffff;
+        AppTheme.shadow-dark = #a3b1c6;
+        AppTheme.depth = 1.0;
+
+        // Shape
+        AppTheme.radius-sm = 8px;
+        AppTheme.radius-md = 12px;
+        AppTheme.radius-lg = 18px;
+        AppTheme.radius-xl = 16px;
+        AppTheme.border-w = 0px;
+
+        AppTheme.is-dark = false;
+    }
+}
+
+/// Raised control that presses inward. The inset look is approximated with a
+/// light rim plus a dark rim because Slint has no box-shadow inset.
+export component NeuControl inherits Rectangle {
+    in property <bool> pressed: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    border-radius: AppTheme.radius-md;
+    background: root.pressed ? AppTheme.surface-hover : AppTheme.window-bg;
+    border-width: 1px;
+    border-color: root.pressed ? AppTheme.shadow-dark : AppTheme.shadow-light;
+    opacity: root.enabled ? 1.0 : 0.5;
+
+    animate background { duration: 100ms; easing: ease-out; }
+    animate border-color { duration: 100ms; easing: ease-out; }
+
+    TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

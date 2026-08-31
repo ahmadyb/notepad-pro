@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WiX v3 installer definition for NotePad Pro.
+
+  Built from the release binary produced by `cargo build --release`.
+  The .exe is fully self-contained (Slint is linked statically), so the
+  installer only needs to ship one file, plus the icon for Add/Remove
+  Programs.
+
+  Build with:
+      candle.exe main.wxs
+      light.exe -ext WixUIExtension main.wixobj -o notepadpro.msi
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="NotePad Pro"
+           Language="1033"
+           Version="1.0.2"
+           Manufacturer="NotePad Pro contributors"
+           UpgradeCode="7C4A9F12-3B2E-4E6C-9C1D-2A5B8F0E6D31">
+
+    <Package InstallerVersion="200"
+               Compressed="yes"
+               InstallScope="perMachine"
+               Description="Line-oriented text editor with multi-colour highlighting"
+               Comments="NotePad Pro 1.0.2-slint" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of NotePad Pro is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon" SourceFile="ui\assets\app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/ahmadyb/notepad-pro" />
+
+    <Feature Id="ProductFeature" Title="NotePad Pro" Level="1">
+      <ComponentRef Id="ApplicationExecutable" />
+      <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="TxtAssociation" />
+    </Feature>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="NotePadPro">
+          <Component Id="ApplicationExecutable" Guid="*">
+            <File Id="ApplicationExecutableFile"
+                  Name="notepadpro.exe"
+                  Source="target\release\notepadpro.exe"
+                  KeyPath="yes" />
+          </Component>
+
+          <Component Id="TxtAssociation" Guid="*">
+            <RegistryValue Root="HKCR" Key=".txt" Name="NotePadPro.Txt" Type="string" Value="" />
+            <RegistryValue Root="HKCR" Key="NotePadPro.Txt" Name="" Type="string" Value="Text Document (NotePad Pro)" />
+            <RegistryValue Root="HKCR" Key="NotePadPro.Txt\DefaultIcon" Name="" Type="string" Value="[INSTALLFOLDER]notepadpro.exe,0" />
+            <RegistryValue Root="HKCR" Key="NotePadPro.Txt\shell\open\command" Name="" Type="string" Value="&quot;[INSTALLFOLDER]notepadpro.exe&quot; &quot;%1&quot;" />
+          </Component>
+        </Directory>
+      </Directory>
+
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="NotePad Pro">
+          <Component Id="ApplicationShortcut" Guid="*">
+            <Shortcut Id="ApplicationStartMenuShortcut"
+                      Name="NotePad Pro"
+                      Target="[INSTALLFOLDER]notepadpro.exe"
+                      WorkingDirectory="INSTALLFOLDER"
+                      Icon="AppIcon" />
+            <RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall" />
+            <RegistryValue Root="HKCU" Key="Software\NotePadPro" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+  </Product>
+</Wix>

@@ -1,0 +1,91 @@
+// ui/themes/clay_light.slint — Claymorphism Light
+//
+// Signature look: very round corners, a soft two-tone rim, and controls that
+// visibly depress when pressed.
+
+import { AppTheme } from "tokens.slint";
+
+export global ClayLightTheme {
+    public function apply() {
+        // Backgrounds
+        AppTheme.window-bg = #e8ecf5;
+        AppTheme.toolbar-bg = #dde3f0;
+        AppTheme.editor-bg = #eef1f8;
+        AppTheme.sidebar-bg = #e2e8f5;
+        AppTheme.panel-bg = #e8ecf5;
+        AppTheme.surface = #dde3f0;
+        AppTheme.surface-hover = #d2d9ea;
+        AppTheme.card-bg = #eaeef7;
+        AppTheme.card-active = #dfe6f8;
+        AppTheme.code-bg = #e4e9f4;
+        AppTheme.input-bg = #e4e9f4;
+        AppTheme.tab-bg = #dde3f0;
+        AppTheme.tab-active-bg = #eef1f8;
+
+        // Text
+        AppTheme.text-colour = #1b1f2a;
+        AppTheme.text-muted = #5b6478;
+        AppTheme.text-strong = #0b0e15;
+        AppTheme.editor-text = #1b1f2a;
+        AppTheme.editor-text-on-highlight = #1b1f2a;
+        AppTheme.tooltip-text = #ffffff;
+        AppTheme.tooltip-bg = #1b1f2a;
+        AppTheme.caret-colour = #1b1f2a;
+        AppTheme.selection-colour = #6366f140;
+
+        // Accents
+        AppTheme.accent-colour = #6366f1;
+        AppTheme.accent-colour-2 = #8b5cf6;
+        AppTheme.accent-text = #ffffff;
+        AppTheme.danger-colour = #e81123;
+        AppTheme.success-colour = #16a34a;
+        AppTheme.warning-colour = #d97706;
+
+        // Depth — clay leans on a light rim instead of a hairline border.
+        AppTheme.border-colour = #ffffff;
+        AppTheme.shadow-colour = #b9c2d8;
+        AppTheme.shadow-light = #ffffff;
+        AppTheme.shadow-dark = #b9c2d8;
+        AppTheme.depth = 1.0;
+
+        // Shape — the signature puffy corners.
+        AppTheme.radius-sm = 12px;
+        AppTheme.radius-md = 16px;
+        AppTheme.radius-lg = 20px;
+        AppTheme.radius-xl = 26px;
+        AppTheme.border-w = 2px;
+
+        AppTheme.is-dark = false;
+    }
+}
+
+/// Clay control: raised by default, physically pressed on touch.
+export component ClayButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 36px;
+    border-radius: AppTheme.radius-md;
+    background: touch.pressed ? AppTheme.surface-hover : AppTheme.surface;
+    border-color: touch.pressed ? AppTheme.shadow-dark : AppTheme.shadow-light;
+    border-width: AppTheme.border-w;
+    opacity: root.enabled ? 1.0 : 0.45;
+
+    animate background { duration: 80ms; easing: ease-out; }
+    animate border-color { duration: 80ms; easing: ease-out; }
+
+    Text {
+        text: root.label;
+        color: AppTheme.text-colour;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        font-size: 13px;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}

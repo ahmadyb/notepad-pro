@@ -1,0 +1,190 @@
+// ui/extract.slint
+//
+// Feature 3 — extract lines by highlight colour, with a live preview.
+
+import { AppTheme } from "themes/tokens.slint";
+import { ColourEntry } from "model.slint";
+import { ColourSwatch } from "components/colour_swatch.slint";
+import { GhostButton, RippleButton } from "animations.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component ExtractPanel inherits Rectangle {
+    in property <[ColourEntry]> colour-entries;
+    in property <string> preview-text;
+    // Pre-formatted in Rust: "12 lines · 840 chars".
+    in property <string> preview-label;
+    in property <bool> group-by-colour: false;
+    in property <bool> motion-enabled: true;
+
+    callback colour-toggled(string, bool);
+    callback order-changed(bool);
+    callback copy-selected();
+    callback export-selected();
+    callback open-in-tab();
+    callback close();
+
+    width: 330px;
+    background: AppTheme.panel-bg;
+    border-color: AppTheme.border-colour;
+    clip: true;
+
+    // Slide in from the right.
+    animate x { duration: root.motion-enabled ? AppTheme.slow : 0ms;
+                easing: cubic-bezier(0.65, 0, 0.35, 1); }
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+        alignment: start;
+
+        // ── Header ────────────────────────────────────────────────────────
+        HorizontalLayout {
+            alignment: start;
+            spacing: 6px;
+            Text {
+                text: "Extract by Colour";
+                font-size: 14px;
+                font-weight: 600;
+                color: AppTheme.text-strong;
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            GhostButton { label: "✕"; min-width: 26px; clicked => { root.close(); } }
+        }
+
+        Text {
+            text: "Tick the colours to include. Lines keep their original order unless you group them.";
+            color: AppTheme.text-muted;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+
+        // ── Colour checkboxes ─────────────────────────────────────────────
+        ScrollView {
+            height: 156px;
+
+            VerticalLayout {
+                spacing: 2px;
+                alignment: start;
+
+                for entry in root.colour-entries : Rectangle {
+                    height: 30px;
+                    border-radius: AppTheme.radius-sm;
+                    background: row-touch.has-hover ? AppTheme.surface : transparent;
+                    animate background { duration: AppTheme.fast; }
+
+                    HorizontalLayout {
+                        padding-left: 6px;
+                        padding-right: 6px;
+                        spacing: 10px;
+                        alignment: start;
+
+                        Rectangle {
+                            width: 18px;
+                            height: 18px;
+                            border-radius: 4px;
+                            border-width: 1.5px;
+                            border-color: entry.active ? AppTheme.accent-colour : AppTheme.border-colour;
+                            background: entry.active ? AppTheme.accent-colour : transparent;
+                            animate background { duration: 160ms; }
+
+                            if entry.active : Path {
+                                x: 2px;
+                                y: 2px;
+                                width: 14px;
+                                height: 14px;
+                                stroke: AppTheme.accent-text;
+                                stroke-width: 2px;
+                                commands: "M 2 7 L 5.5 10.5 L 12 3";
+                            }
+                        }
+
+                        ColourSwatch {
+                            swatch-colour: entry.colour;
+                            swatch-name: entry.name;
+                            swatch-size: 16px;
+                        }
+
+                        Text {
+                            text: entry.name;
+                            color: AppTheme.text-colour;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+
+                        Text {
+                            text: entry.count-label;
+                            color: AppTheme.text-muted;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    row-touch := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.colour-toggled(entry.key, !entry.active); }
+                    }
+                }
+            }
+        }
+
+        // ── Order ─────────────────────────────────────────────────────────
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            Text {
+                text: "Order";
+                color: AppTheme.text-muted;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+            GhostButton { label: "Document"; toggled: !root.group-by-colour;
+                          clicked => { root.order-changed(false); } }
+            GhostButton { label: "By colour"; toggled: root.group-by-colour;
+                          clicked => { root.order-changed(true); } }
+        }
+
+        // ── Preview ───────────────────────────────────────────────────────
+        Rectangle {
+            vertical-stretch: 1;
+            height: 150px;
+            border-radius: AppTheme.radius-sm;
+            background: AppTheme.code-bg;
+            border-width: 1px;
+            border-color: AppTheme.border-colour;
+            clip: true;
+
+            ScrollView {
+                VerticalLayout {
+                    padding: 8px;
+                    alignment: start;
+                    Text {
+                        text: root.preview-text == "" ? "Nothing selected yet." : root.preview-text;
+                        font-family: "Consolas";
+                        font-size: 12px;
+                        color: root.preview-text == "" ? AppTheme.text-muted : AppTheme.editor-text;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: root.preview-label;
+            color: AppTheme.text-muted;
+            font-size: 11px;
+        }
+
+        // ── Actions ───────────────────────────────────────────────────────
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            RippleButton { label: "Copy"; clicked => { root.copy-selected(); } }
+            RippleButton { label: "New Tab"; btn-colour: AppTheme.surface;
+                           label-colour: AppTheme.text-colour; clicked => { root.open-in-tab(); } }
+            RippleButton { label: "Export…"; btn-colour: AppTheme.surface;
+                           label-colour: AppTheme.text-colour; clicked => { root.export-selected(); } }
+        }
+    }
+}

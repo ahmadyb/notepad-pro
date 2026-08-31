@@ -1,0 +1,169 @@
+// ui/editor.slint
+//
+// The document view: one TextInput per line, exactly mirroring the original
+// div-per-line contenteditable design. That is what makes a per-line colour
+// band and a per-line list marker possible at all.
+//
+// Row heights come from an invisible measuring Text that shares the font and
+// wrap mode of the TextInput, so wrapped lines expand and unwrapped lines do
+// not (Slint's TextInput does not publish a preferred height of its own).
+//
+// Slint 1.6 gives TextInput only three callbacks — `edited`, `accepted` and
+// `cursor-position-changed`. Enter is therefore owned by Rust: the multi-line
+// TextInput inserts a "\n", `edited` fires, and `AppState::set_line_text`
+// splits the line (continuing lists, renumbering). Ctrl/Tab shortcuts live on
+// a wrapping FocusScope, which sees the keys the TextInput rejects.
+
+import { AppTheme } from "themes/tokens.slint";
+import { EditorLineData, LineColour, ListType } from "model.slint";
+import { ListMarker } from "components/list_marker.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component Editor inherits Rectangle {
+    in property <[EditorLineData]> lines;
+    in-out property <int> cursor-line: 0;
+    in property <float> zoom: 1.0;
+    in property <bool> wrapping: true;
+    // `word-wrap` is both our bool and a TextWrap enumerator, so map it once.
+    property <TextWrap> wrap-mode: root.wrapping ? word-wrap : no-wrap;
+    in property <string> font-family: "Consolas";
+    in property <length> base-font-size: 14px;
+    // Rust bumps this to record a reveal request (see reveal()).
+    in property <int> focus-request: -1;
+    in property <bool> motion-enabled: true;
+
+    callback line-edited(int, string);
+    // text, ctrl, shift — dispatched to the global shortcut handler in Rust.
+    callback key-command(string, bool, bool);
+    callback line-clicked(int);
+    callback checkbox-toggled(int);
+    callback caret-moved(int);
+    // true = indent, false = outdent.
+    callback tab-pressed(bool);
+
+    background: AppTheme.editor-bg;
+    clip: true;
+
+    /// Record the reveal request.
+    ///
+    /// Slint 1.6 has no `changed` property callbacks (they are experimental),
+    /// so the editor cannot imperatively scroll/focus from here; auto-scroll
+    /// to a revealed line is a documented 1.6 limitation.
+    public function reveal(index: int) {
+        root.reveal-target = index;
+    }
+
+    in-out property <int> reveal-target: -1;
+
+    property <length> text-size: root.base-font-size * root.zoom;
+    property <length> line-gap: 3px;
+    property <length> indent-step: 22px;
+    property <length> gutter: 10px;
+    property <length> marker-width: 26px;
+
+    // Shortcut layer: keys the focused TextInput rejects bubble up to here.
+    FocusScope {
+        key-pressed(event) => {
+            if (event.modifiers.control) {
+                root.key-command(event.text, true, event.modifiers.shift);
+                accept
+            } else if (event.text == "\u{0009}") {
+                root.tab-pressed(!event.modifiers.shift);
+                accept
+            } else {
+                reject
+            }
+        }
+
+        scroll := ScrollView {
+
+            stack := VerticalLayout {
+                padding: 8px;
+                spacing: 0px;
+                alignment: start;
+
+                for line[i] in root.lines : row := Rectangle {
+                    property <bool> is-current: i == root.cursor-line;
+                    property <bool> has-band: line.colour != LineColour.None;
+                    property <length> content-x: root.gutter + (line.indent * root.indent-step)
+                        + (line.list-type == ListType.None ? 0px : root.marker-width);
+
+                    height: measure.preferred-height + (root.line-gap * 2);
+
+                    // ── Highlight band ────────────────────────────────────
+                    background: row.has-band
+                        ? line.accent.with-alpha(0.25)
+                        : (row.is-current ? AppTheme.surface.with-alpha(0.55) : transparent);
+                    animate background {
+                        duration: root.motion-enabled ? 350ms : 0ms;
+                        easing: ease-out;
+                    }
+
+                    // ── Left accent bar ───────────────────────────────────
+                    Rectangle {
+                        width: 3px;
+                        height: parent.height;
+                        border-radius: 2px;
+                        background: row.has-band ? line.accent : transparent;
+                        animate background {
+                            duration: root.motion-enabled ? 350ms : 0ms;
+                            easing: ease-out;
+                        }
+                    }
+
+                    // Click anywhere on the band to make it the caret line.
+                    // Declared first so the TextInput stays on top and keeps
+                    // its own mouse handling.
+                    TouchArea {
+                        width: parent.width;
+                        height: parent.height;
+                        clicked => { root.line-clicked(i); }
+                    }
+
+                    // ── List marker ───────────────────────────────────────
+                    if line.list-type != ListType.None : ListMarker {
+                        x: root.gutter + (line.indent * root.indent-step);
+                        y: (parent.height - self.height) / 2;
+                        list-type: line.list-type;
+                        marker: line.marker;
+                        checked: line.checked;
+                        toggled => { root.checkbox-toggled(i); }
+                    }
+
+                    // ── Measuring twin (invisible) ────────────────────────
+                    measure := Text {
+                        x: row.content-x;
+                        y: root.line-gap;
+                        width: parent.width - row.content-x - root.gutter;
+                        text: line.text;
+                        font-family: root.font-family;
+                        font-size: root.text-size;
+                        wrap: root.wrap-mode;
+                        opacity: 0;
+                    }
+
+                    // ── The editable line ─────────────────────────────────
+                    input := TextInput {
+                        x: row.content-x;
+                        y: root.line-gap;
+                        width: measure.width;
+                        height: measure.preferred-height;
+                        text: line.text;
+                        font-family: root.font-family;
+                        font-size: root.text-size;
+                        wrap: root.wrap-mode;
+                        single-line: false;
+                        // Always dark on the light bands, themed elsewhere —
+                        // this is the binding that fixes "invisible text on
+                        // dark themes" (bug #3).
+                        color: row.has-band ? AppTheme.editor-text-on-highlight : AppTheme.editor-text;
+                        selection-background-color: AppTheme.selection-colour;
+
+                        edited => { root.line-edited(i, self.text); }
+                        cursor-position-changed => { root.caret-moved(i); }
+                    }
+                }
+            }
+        }
+    }
+}

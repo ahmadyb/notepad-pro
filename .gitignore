@@ -1,0 +1,27 @@
+# Rust
+/target
+**/*.rs.bk
+*.pdb
+
+# Slint generated code lives under target/, nothing to ignore separately.
+
+# Runtime data (the app writes to $XDG_DATA_HOME/NotePadPro, but keep local
+# scratch databases out of git in case one is created in-tree).
+*.db
+*.db-shm
+*.db-wal
+settings.json
+session.json
+
+# Packaging output
+/debian/.debhelper
+/debian/files
+/debian/notepad-pro
+/debian/notepad-pro.substvars
+/dist
+
+# Editor noise
+.idea/
+.vscode/
+*.swp
+.DS_Store
