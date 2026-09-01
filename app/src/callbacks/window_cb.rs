@@ -100,6 +100,10 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
                     } else {
                         // Do NOT rebuild the model here: that would recreate
                         // the TextInput and drop the caret on every keystroke.
+                        // Push just this row so the model stays equal to the
+                        // document and a later reconcile leaves the row (and
+                        // its focus/caret) alone.
+                        sync::sync_editor_row(&win, &lock(&s), index);
                         sync::sync_status(&win, &lock(&s));
                         sync::sync_tabs(&win, &lock(&s));
                         sync::sync_extract(&win, &lock(&s));

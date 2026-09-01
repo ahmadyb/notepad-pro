@@ -91,16 +91,16 @@ pub fn line_to_ui(
     }
 }
 
-pub fn lines_to_model(
+pub fn lines_vec(
     lines: &[EditorLine],
     palette: &Palette,
     cursor_line: usize,
     find: &FindEngine,
-) -> ModelRc<EditorLineData> {
+) -> Vec<EditorLineData> {
     use std::collections::HashSet;
     let match_lines: HashSet<usize> = find.matches.iter().map(|m| m.line).collect();
     let current = find.current_match().map(|m| m.line);
-    let rows: Vec<EditorLineData> = lines
+    lines
         .iter()
         .enumerate()
         .map(|(i, line)| {
@@ -112,8 +112,42 @@ pub fn lines_to_model(
                 current == Some(i),
             )
         })
-        .collect();
-    ModelRc::from(std::rc::Rc::new(VecModel::from(rows)))
+        .collect()
+}
+
+/// Builds the row for line `index` exactly the way [`lines_vec`] would, so a
+/// callback can push a single row without touching the others.
+pub fn line_row(
+    lines: &[EditorLine],
+    palette: &Palette,
+    cursor_line: usize,
+    find: &FindEngine,
+    index: usize,
+) -> Option<EditorLineData> {
+    let line = lines.get(index)?;
+    let find_match = find.matches.iter().any(|m| m.line == index);
+    let find_current = find.current_match().map(|m| m.line) == Some(index);
+    Some(line_to_ui(
+        line,
+        palette,
+        index == cursor_line,
+        find_match,
+        find_current,
+    ))
+}
+
+pub fn lines_to_model(
+    lines: &[EditorLine],
+    palette: &Palette,
+    cursor_line: usize,
+    find: &FindEngine,
+) -> ModelRc<EditorLineData> {
+    ModelRc::from(std::rc::Rc::new(VecModel::from(lines_vec(
+        lines,
+        palette,
+        cursor_line,
+        find,
+    ))))
 }
 
 pub fn tab_to_ui(tab: &TabState) -> TabData {

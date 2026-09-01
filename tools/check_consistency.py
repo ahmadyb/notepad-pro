@@ -143,12 +143,13 @@ def main() -> int:
     used = set(re.findall(r"\.(?:set|get)_([a-z0-9_]+)\(", rust))
     # Accessors may legitimately target slint::Window, rfd, core types etc.
     # We only flag ones that look like window properties but are missing.
+    # "row_data" is the slint VecModel API (set_row_data), not a property.
     window_like = {
         u
         for u in used
         if u not in {
             "minimized", "maximized", "title", "text", "query", "replacement",
-            "pinned", "file_name", "line_text", "list_type",
+            "pinned", "file_name", "line_text", "list_type", "row_data",
         }
     }
     for prop in sorted(window_like - root_props):
