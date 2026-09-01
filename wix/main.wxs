@@ -50,7 +50,7 @@
           </Component>
 
           <Component Id="TxtAssociation" Guid="*">
-            <RegistryValue Root="HKCR" Key=".txt" Name="NotePadPro.Txt" Type="string" Value="" />
+            <RegistryValue Root="HKCR" Key=".txt" Name="NotePadPro.Txt" Type="string" Value="" KeyPath="yes" />
             <RegistryValue Root="HKCR" Key="NotePadPro.Txt" Name="" Type="string" Value="Text Document (NotePad Pro)" />
             <RegistryValue Root="HKCR" Key="NotePadPro.Txt\DefaultIcon" Name="" Type="string" Value="[INSTALLFOLDER]notepadpro.exe,0" />
             <RegistryValue Root="HKCR" Key="NotePadPro.Txt\shell\open\command" Name="" Type="string" Value="&quot;[INSTALLFOLDER]notepadpro.exe&quot; &quot;%1&quot;" />
