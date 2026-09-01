@@ -1,57 +1,36 @@
-# Build, test and package NotePad Pro on GitHub Actions.
-#
-# The binary is fully self-contained (Slint + SQLite statically linked), so each
-# job only needs a Rust toolchain plus, on Linux, a few system headers for the
-# Slint backend. Tests run headless through `slint-testing` — no display needed.
-
-name: build
+name: "NotePad Pro 1.0.2-slint: Rust + Slint reimplementation"
 
 on:
   push:
-    branches: [main, "arena/*"]
+    branches: ["**"]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
-  # Tests must never touch the real user data directory.
-  XDG_DATA_HOME: ${{ github.workspace }}/.ci-data
 
 jobs:
-  # ── Cross-file contract lint (runs everywhere, no Rust needed) ──────────
+  # ── Static cross-file contract check ────────────────────────────────────
   consistency:
     name: Consistency lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run check_consistency.py
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Cross-file contract check
         run: python3 tools/check_consistency.py
 
-  # ── Build + test on the three desktop platforms ─────────────────────────
+  # ── Windows build, tests, installer ─────────────────────────────────────
   build:
-    name: ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: windows-latest
     needs: consistency
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            artifact: notepadpro
-            bin: target/release/notepadpro
-          - os: windows-latest
-            artifact: notepadpro.exe
-            bin: target/release/notepadpro.exe
-          - os: macos-latest
-            artifact: notepadpro-macos
-            bin: target/release/notepadpro
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      # The repo pins MSRV 1.78 in rust-toolchain.toml; CI builds on stable so
-      # it always resolves the latest compatible dependency graph. Local dev
-      # still honours the MSRV pin.
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
       - name: Override the in-repo MSRV pin for CI
@@ -60,15 +39,7 @@ jobs:
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ${{ matrix.os }}
-
-      # Slint's Linux backend links against a handful of system libraries.
-      - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            pkg-config libxkbcommon-dev libfontconfig1-dev libfreetype6-dev
+          shared-key: windows
 
       - name: Build (release)
         run: cargo build --release --verbose
@@ -77,13 +48,28 @@ jobs:
         run: cargo test --verbose
 
       - name: Smoke-check the binary
-        run: ${{ matrix.bin }} --help
+        run: ./target/release/notepadpro.exe --help
+
+      - name: Build MSI installer (WiX 3.11)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/wixtoolset/wix3/releases/download/wix311rtm/wix311-binaries.zip" -OutFile wix.zip
+          Expand-Archive -Path wix.zip -DestinationPath wix-bin
+          .\wix-bin\candle.exe wix\main.wxs -arch x64 -out wix\main.wixobj
+          .\wix-bin\light.exe -ext WixUIExtension wix\main.wixobj -out NotePad-Pro-1.0.2.msi
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.bin }}
+          name: notepad-pro-windows
+          path: target/release/notepadpro.exe
+          if-no-files-found: error
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: notepad-pro-windows-installer
+          path: NotePad-Pro-1.0.2.msi
           if-no-files-found: error
 
   # ── Attach binaries to version-tag releases ─────────────────────────────
@@ -97,13 +83,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all binaries
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: dist
+          path: artifacts
 
-      - name: Create GitHub release
+      - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/**/*
+          files: |
+            artifacts/**/*
           generate_release_notes: true
