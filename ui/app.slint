@@ -48,10 +48,12 @@ import {
 export component AppWindow inherits Window {
     title: root.window-title;
     background: AppTheme.window-bg;
-    // Slint 1.6: a Window cannot set both size and min-size; use the
-    // initial size only (children are px-sized, so no min constraint needed).
-    width: 1200px;
-    height: 800px;
+    // Slint 1.6: a Window cannot set both size and min-size. `preferred-*`
+    // gives the initial size while letting the OS resize the window — and
+    // the content stretches with it (a fixed `width:` binding was freezing
+    // the UI at 1200px inside a maximised window).
+    preferred-width: 1200px;
+    preferred-height: 800px;
 
     // NOTE: Slint 1.6's Window has no `close-requested` interception; the
     // unsaved-changes check runs from the custom close button (`close-window`).
@@ -429,6 +431,7 @@ export component AppWindow inherits Window {
                 editor := Editor {
                     lines: root.lines;
                     cursor-line: root.cursor-line;
+                    cursor-col: root.cursor-col;
                     zoom: root.zoom;
                     wrapping: root.word-wrap;
                     font-family: root.font-family;

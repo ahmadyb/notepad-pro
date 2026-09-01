@@ -30,8 +30,11 @@ pub fn save_dialog(default_name: &str) -> Option<PathBuf> {
     FileDialog::new()
         .set_title("Save As")
         .set_file_name(default_name)
-        .add_filter("NotePad Pro", &["npro"])
+        // Text first: it is the default filter, so a fresh "Untitled"
+        // document saves as .txt unless the user opts into .npro.
         .add_filter("Text File", &["txt"])
+        .add_filter("Markdown", &["md"])
+        .add_filter("NotePad Pro", &["npro"])
         .add_filter("All Files", &["*"])
         .save_file()
 }

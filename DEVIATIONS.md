@@ -77,6 +77,11 @@ spec while adapting to the Rust + Slint target.
   — it sits outside the row repeater and survives rebuilds. `focus-line` /
   `focus-token` properties are already wired end-to-end for a one-line
   upgrade to 1.7's `focus()`.
+* **The fallback caret is monospace-measured.** Slint 1.6 strings expose no
+  substring/char-width API, so the synthetic caret's x comes from the advance
+  width of a 10-char sample — pixel-exact for the Consolas default, an
+  approximation for proportional custom fonts. The native TextInput caret is
+  always exact.
 * **Enter is handled through the `edited` callback.** Slint 1.6's multi-line
   `TextInput` inserts the newline itself and only exposes `edited`, so
   `AppState::set_line_text` splits any embedded `"\n"`, continuing lists onto

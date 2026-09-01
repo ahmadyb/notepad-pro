@@ -325,14 +325,80 @@ impl AppState {
         let text = self.doc().lines[line].text.clone();
         let total = text.chars().count();
         let col = self.cursor.col.min(total);
-        let mut out: String = text.chars().take(col).collect();
-        out.push_str(s);
-        out.extend(text.chars().skip(col));
-        self.doc_mut().set_text(line, &out);
+        let head: String = text.chars().take(col).collect();
+        let tail: String = text.chars().skip(col).collect();
+
+        // Multi-line payloads (clipboard paste through the fallback path)
+        // must become real lines, not one line with hidden "\n"s inside.
+        let parts: Vec<&str> = s.split('\n').map(|p| p.trim_end_matches('\r')).collect();
+        let first = parts.first().copied().unwrap_or("");
+        self.doc_mut().set_text(line, &format!("{head}{first}"));
+        let mut idx = line;
+        let rest = &parts[1..];
+        for (k, part) in rest.iter().enumerate() {
+            let content = if k == rest.len() - 1 {
+                format!("{part}{tail}")
+            } else {
+                (*part).to_string()
+            };
+            idx = self.doc_mut().insert_line_after(idx);
+            self.doc_mut().set_text(idx, &content);
+        }
+        self.cursor = if rest.is_empty() {
+            Cursor { line: idx, col: col + first.chars().count() }
+        } else {
+            Cursor { line: idx, col: parts.last().copied().unwrap_or("").chars().count() }
+        };
         self.doc_mut().commit();
-        self.cursor.col = col + s.chars().count();
         self.mark_dirty();
         self.invalidate_find();
+    }
+
+    /// Arrow-key caret movement for the FocusScope fallback path. Slint
+    /// delivers the arrows as private-use chars: `\u{F700}` up, `\u{F701}`
+    /// down, `\u{F702}` left, `\u{F703}` right.
+    pub fn move_caret(&mut self, key: char) {
+        let max_line = self.doc().lines.len().saturating_sub(1);
+        let len_at = |s: &AppState, l: usize| {
+            s.doc().lines.get(l).map(|x| x.text.chars().count()).unwrap_or(0)
+        };
+        match key {
+            '\u{F702}' => {
+                if self.cursor.col > 0 {
+                    self.cursor.col -= 1;
+                } else if self.cursor.line > 0 {
+                    self.cursor.line -= 1;
+                    self.cursor.col = len_at(self, self.cursor.line);
+                }
+            }
+            '\u{F703}' => {
+                let len = len_at(self, self.cursor.line);
+                if self.cursor.col < len {
+                    self.cursor.col += 1;
+                } else if self.cursor.line < max_line {
+                    self.cursor.line += 1;
+                    self.cursor.col = 0;
+                }
+            }
+            '\u{F700}' => {
+                if self.cursor.line > 0 {
+                    self.cursor.line -= 1;
+                    let len = len_at(self, self.cursor.line);
+                    if self.cursor.col > len {
+                        self.cursor.col = len;
+                    }
+                }
+            }
+            _ => {
+                if self.cursor.line < max_line {
+                    self.cursor.line += 1;
+                    let len = len_at(self, self.cursor.line);
+                    if self.cursor.col > len {
+                        self.cursor.col = len;
+                    }
+                }
+            }
+        }
     }
 
     /// Backspace for the FocusScope fallback path. Returns the line the

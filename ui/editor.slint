@@ -22,6 +22,7 @@ import { ScrollView } from "std-widgets.slint";
 export component Editor inherits Rectangle {
     in property <[EditorLineData]> lines;
     in-out property <int> cursor-line: 0;
+    in property <int> cursor-col: 0;
     in property <float> zoom: 1.0;
     in property <bool> wrapping: true;
     // `word-wrap` is both our bool and a TextWrap enumerator, so map it once.
@@ -36,6 +37,10 @@ export component Editor inherits Rectangle {
     in property <int> focus-line: -1;
     in property <int> focus-token: 0;
     in property <bool> motion-enabled: true;
+
+    // True while the wrapping FocusScope holds keyboard focus, i.e. the
+    // fallback typing mode. Drives the synthetic caret below.
+    property <bool> kb-focus: fs.has-focus;
 
     callback line-edited(int, string);
     // text, ctrl, shift — dispatched to the global shortcut handler in Rust.
@@ -68,7 +73,7 @@ export component Editor inherits Rectangle {
     property <length> estimate-row-height: root.text-size * 1.35 + root.line-gap * 2;
 
     // Shortcut layer: keys the focused TextInput rejects bubble up to here.
-    FocusScope {
+    fs := FocusScope {
         key-pressed(event) => {
             // Every key is offered to Rust: Ctrl chords become shortcuts,
             // and when no line TextInput holds focus, plain characters,
@@ -85,9 +90,12 @@ export component Editor inherits Rectangle {
         }
 
         scroll := ScrollView {
-            // Pin the viewport to the visible width: without this, one long
-            // line widens the viewport and wrapping never happens.
-            viewport-width: self.visible-width;
+            // Wrap on: pin the viewport to the visible width, otherwise one
+            // long line widens the viewport and wrapping never happens.
+            // Wrap off: let the viewport take the content's preferred width
+            // so the hidden tail of long lines stays reachable by scrolling
+            // sideways (the horizontal scrollbar appears automatically).
+            viewport-width: root.wrapping ? self.visible-width : stack.preferred-width;
 
             stack := VerticalLayout {
                 padding: 8px;
@@ -101,7 +109,11 @@ export component Editor inherits Rectangle {
                     property <length> content-x: root.gutter + (line.indent * root.indent-step)
                         + (line.list-type == ListType.None ? 0px : root.marker-width);
 
-                    height: measure.preferred-height + (root.line-gap * 2);
+                    // Never collapse below one text line: an EMPTY line's
+                    // measuring Text reports zero height, which made fresh
+                    // Enter lines invisible and Enter look "stuck".
+                    height: max(root.text-size * 1.35, measure.preferred-height)
+                        + (root.line-gap * 2);
 
                     // ── Highlight band ────────────────────────────────────
                     // The current find match must be impossible to miss:
@@ -187,6 +199,35 @@ export component Editor inherits Rectangle {
 
                         edited => { root.line-edited(i, self.text); }
                         cursor-position-changed => { root.caret-moved(i); }
+                    }
+
+                    // ── Fallback caret ────────────────────────────────────
+                    // While the FocusScope holds focus no TextInput shows a
+                    // native caret; draw a blinking one at the Rust-tracked
+                    // caret position so the user always sees where typing
+                    // will land. Slint 1.6 strings have no substring API, so
+                    // the x offset comes from the monospace advance width
+                    // (exact for the Consolas default, close otherwise).
+                    caret-twin := Text {
+                        text: "0123456789";
+                        font-family: root.font-family;
+                        font-size: root.text-size;
+                        wrap: no-wrap;
+                        opacity: 0;
+                    }
+
+                    if root.kb-focus && i == root.cursor-line : Rectangle {
+                        x: row.content-x + (caret-twin.preferred-width / 10) * root.cursor-col;
+                        y: root.line-gap;
+                        width: 2px;
+                        height: root.text-size * 1.2;
+                        border-radius: 1px;
+                        background: AppTheme.editor-text;
+                        // Square-wave blink: 0→1 forever, 530 ms per phase.
+                        property <float> blink-phase;
+                        blink-phase: 1;
+                        animate blink-phase { duration: 530ms; iteration-count: -1; }
+                        opacity: blink-phase < 0.5 ? 1 : 0;
                     }
                 }
             }

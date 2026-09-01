@@ -104,9 +104,11 @@ fn window_buttons_wire_the_three_callbacks() {
 
 #[test]
 fn default_geometry_is_1200_by_800() {
+    // preferred-* gives the initial size while letting the OS resize the
+    // window and the content stretch with it.
     let src = app_slint();
-    assert!(src.contains("width: 1200px"));
-    assert!(src.contains("height: 800px"));
+    assert!(src.contains("preferred-width: 1200px"));
+    assert!(src.contains("preferred-height: 800px"));
 }
 
 #[test]

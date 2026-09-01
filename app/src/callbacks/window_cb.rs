@@ -178,7 +178,18 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
                     sync::focus_line(&win, caret);
                     true
                 }
-                c if !c.is_control() => {
+                // Arrow keys (Slint private-use chars): move the tracked
+                // caret so sideways/vertical navigation works in fallback
+                // mode and the synthetic caret follows.
+                c @ '\u{F700}'..='\u{F703}' => {
+                    lock(&s).move_caret(c);
+                    sync::sync_all(&win, &lock(&s));
+                    true
+                }
+                // Printable only: control chars and the whole F7xx
+                // private-use block (arrows, F-keys, Home, End...) must
+                // never be inserted as text.
+                c if !c.is_control() && !('\u{F700}'..='\u{F7FF}').contains(&c) => {
                     lock(&s).insert_text_at_cursor(&c.to_string());
                     sync::sync_all(&win, &lock(&s));
                     let caret = lock(&s).cursor.line;

@@ -30,4 +30,4 @@ pub const APP_NAME: &str = "NotePad Pro";
 pub const APP_VERSION: &str = "1.0.2-slint";
 
 /// Extension used by "Save to NotePad Pro" documents.
-pub const APP_FILE_EXTENSION: &str = "npro";
+pub const APP_FILE_EXTENSION: &str = "txt";

@@ -73,6 +73,29 @@ reported bugs are fixed.
 12. CI builds a real installer: WiX 3.11 candle/light produce
     `NotePad-Pro-1.0.2.msi`; exe + MSI ship as artifacts and on releases.
 
+### Fixed (Windows field report — round 3)
+1. WiX MSI build: the XML comment in `wix/main.wxs` contained a double
+   dash (`cargo build --release`), which candle rejects (CNDL0104).
+2. Window now opens at 1200x800 via `preferred-width/height` instead of a
+   fixed `width/height` binding that froze the UI inside a maximised window
+   (black stripe right of the content).
+3. Empty lines are visible again: rows never collapse below one text line
+   (an empty measuring Text reports zero height, which made Enter look
+   stuck at one line).
+4. Wrap off: the editor viewport takes the content's preferred width, so
+   long pasted lines stay reachable via a horizontal scrollbar instead of
+   being clipped with no way to scroll sideways.
+5. Multi-line paste through the fallback path now creates real lines
+   instead of stacking everything (with hidden newlines) on one line.
+6. Arrow keys navigate the caret in fallback mode (Slint private-use
+   chars), and the whole F7xx block can no longer be inserted as text.
+7. A blinking fallback caret is drawn at the Rust-tracked caret position
+   while the FocusScope holds focus, so there is always a visible caret
+   where typing will land (Slint 1.6 strings have no substring API, so the
+   x offset uses the monospace advance width).
+8. New documents save as `.txt` by default (Text filter first in the Save
+   dialog; `.npro` remains an opt-in filter).
+
 ### Changed
 - Dropped `tokio` in favour of a synchronous model with a `std::thread`
   autosave loop (see `DEVIATIONS.md`).

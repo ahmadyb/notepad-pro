@@ -2,7 +2,8 @@
 <!--
   WiX v3 installer definition for NotePad Pro.
 
-  Built from the release binary produced by `cargo build --release`.
+  Built from the release binary produced by `cargo build` with the release
+  profile (an XML comment may not contain a double dash, hence no flags here).
   The .exe is fully self-contained (Slint is linked statically), so the
   installer only needs to ship one file, plus the icon for Add/Remove
   Programs.
