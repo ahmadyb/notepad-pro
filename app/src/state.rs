@@ -315,6 +315,80 @@ impl AppState {
         true
     }
 
+    /// Insert text at the caret of the current line (FocusScope fallback
+    /// typing — used when no line TextInput holds keyboard focus).
+    pub fn insert_text_at_cursor(&mut self, s: &str) {
+        if self.doc().lines.is_empty() {
+            return;
+        }
+        let line = self.cursor.line.min(self.doc().lines.len() - 1);
+        let text = self.doc().lines[line].text.clone();
+        let total = text.chars().count();
+        let col = self.cursor.col.min(total);
+        let mut out: String = text.chars().take(col).collect();
+        out.push_str(s);
+        out.extend(text.chars().skip(col));
+        self.doc_mut().set_text(line, &out);
+        self.doc_mut().commit();
+        self.cursor.col = col + s.chars().count();
+        self.mark_dirty();
+        self.invalidate_find();
+    }
+
+    /// Backspace for the FocusScope fallback path. Returns the line the
+    /// caret ended up on when the document structure changed (join, unlist,
+    /// outdent), or `None` for a plain in-line delete / no-op.
+    pub fn backspace_at_cursor(&mut self) -> Option<usize> {
+        if self.doc().lines.is_empty() {
+            return None;
+        }
+        let line = self.cursor.line.min(self.doc().lines.len() - 1);
+        let col = self.cursor.col;
+        if col > 0 {
+            let text = self.doc().lines[line].text.clone();
+            let mut chars: Vec<char> = text.chars().collect();
+            let idx = col.min(chars.len()) - 1;
+            chars.remove(idx);
+            let out: String = chars.into_iter().collect();
+            self.doc_mut().set_text(line, &out);
+            self.doc_mut().commit();
+            self.cursor.col = idx;
+            self.mark_dirty();
+            self.invalidate_find();
+            return None;
+        }
+        // Column 0: peel one formatting layer off first (outdent, then
+        // unlist), then join with the previous line. This is what makes a
+        // bullet or number deletable once written.
+        let needs_format_peel = self
+            .doc()
+            .lines
+            .get(line)
+            .map(|l| l.list_type != ListType::None || l.indent > 0)
+            .unwrap_or(false);
+        if needs_format_peel {
+            if self.doc().lines[line].indent > 0 {
+                self.doc_mut().lines[line].indent -= 1;
+            } else {
+                self.doc_mut().lines[line].list_type = ListType::None;
+            }
+            self.doc_mut().commit();
+            self.mark_dirty();
+            return Some(line);
+        }
+        if let Some((new_line, new_col)) = self.doc_mut().join_with_previous(line) {
+            self.doc_mut().commit();
+            self.cursor = Cursor {
+                line: new_line,
+                col: new_col,
+            };
+            self.mark_dirty();
+            self.invalidate_find();
+            return Some(new_line);
+        }
+        None
+    }
+
     pub fn press_enter(&mut self) -> EnterOutcome {
         let (line, col) = (self.cursor.line, self.cursor.col);
         let outcome = ListEngine::handle_enter(&mut self.tabs[self.active].doc.lines, line, col);

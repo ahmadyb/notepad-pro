@@ -30,11 +30,16 @@ export component Editor inherits Rectangle {
     in property <length> base-font-size: 14px;
     // Rust bumps this to record a reveal request (see reveal()).
     in property <int> focus-request: -1;
+    // Programmatic focus: Rust sets the target row and bumps the token;
+    // the matching TextInput's has-focus binding re-evaluates and takes
+    // keyboard focus. (Slint 1.6 has no imperative focus() on items.)
+    in property <int> focus-line: -1;
+    in property <int> focus-token: 0;
     in property <bool> motion-enabled: true;
 
     callback line-edited(int, string);
     // text, ctrl, shift — dispatched to the global shortcut handler in Rust.
-    callback key-command(string, bool, bool);
+    callback key-command(string, bool, bool) -> bool;
     callback line-clicked(int);
     callback checkbox-toggled(int);
     callback caret-moved(int);
@@ -44,13 +49,12 @@ export component Editor inherits Rectangle {
     background: AppTheme.editor-bg;
     clip: true;
 
-    /// Record the reveal request.
-    ///
-    /// Slint 1.6 has no `changed` property callbacks (they are experimental),
-    /// so the editor cannot imperatively scroll/focus from here; auto-scroll
-    /// to a revealed line is a documented 1.6 limitation.
+    /// Scroll the given line into view (top third of the viewport).
     public function reveal(index: int) {
         root.reveal-target = index;
+        scroll.viewport-y = max(
+            -(scroll.viewport-height - scroll.visible-height),
+            min(0px, scroll.visible-height / 3 - index * root.estimate-row-height));
     }
 
     in-out property <int> reveal-target: -1;
@@ -60,15 +64,20 @@ export component Editor inherits Rectangle {
     property <length> indent-step: 22px;
     property <length> gutter: 10px;
     property <length> marker-width: 26px;
+    // Best-effort row pitch for reveal(); exact for unwrapped lines.
+    property <length> estimate-row-height: root.text-size * 1.35 + root.line-gap * 2;
 
     // Shortcut layer: keys the focused TextInput rejects bubble up to here.
     FocusScope {
         key-pressed(event) => {
-            if (event.modifiers.control) {
-                root.key-command(event.text, true, event.modifiers.shift);
-                accept
-            } else if (event.text == "\u{0009}") {
+            // Every key is offered to Rust: Ctrl chords become shortcuts,
+            // and when no line TextInput holds focus, plain characters,
+            // Enter and Backspace are applied to the caret line so typing
+            // works no matter where in the editor the user clicked.
+            if (event.text == "\u{0009}" && !event.modifiers.control) {
                 root.tab-pressed(!event.modifiers.shift);
+                accept
+            } else if (root.key-command(event.text, event.modifiers.control, event.modifiers.shift)) {
                 accept
             } else {
                 reject
@@ -76,6 +85,9 @@ export component Editor inherits Rectangle {
         }
 
         scroll := ScrollView {
+            // Pin the viewport to the visible width: without this, one long
+            // line widens the viewport and wrapping never happens.
+            viewport-width: self.visible-width;
 
             stack := VerticalLayout {
                 padding: 8px;
@@ -85,15 +97,22 @@ export component Editor inherits Rectangle {
                 for line[i] in root.lines : row := Rectangle {
                     property <bool> is-current: i == root.cursor-line;
                     property <bool> has-band: line.colour != LineColour.None;
+                    property <bool> has-match: line.find-match;
                     property <length> content-x: root.gutter + (line.indent * root.indent-step)
                         + (line.list-type == ListType.None ? 0px : root.marker-width);
 
                     height: measure.preferred-height + (root.line-gap * 2);
 
                     // ── Highlight band ────────────────────────────────────
-                    background: row.has-band
-                        ? line.accent.with-alpha(0.25)
-                        : (row.is-current ? AppTheme.surface.with-alpha(0.55) : transparent);
+                    // The current find match must be impossible to miss:
+                    // it outranks even a highlight band.
+                    background: line.find-current
+                        ? AppTheme.accent-colour.with-alpha(0.55)
+                        : (row.has-band
+                            ? line.accent.with-alpha(0.25)
+                            : (line.find-match
+                                ? AppTheme.warning-colour.with-alpha(0.30)
+                                : (row.is-current ? AppTheme.surface.with-alpha(0.55) : transparent)));
                     animate background {
                         duration: root.motion-enabled ? 350ms : 0ms;
                         easing: ease-out;
@@ -123,7 +142,9 @@ export component Editor inherits Rectangle {
                     // ── List marker ───────────────────────────────────────
                     if line.list-type != ListType.None : ListMarker {
                         x: root.gutter + (line.indent * root.indent-step);
-                        y: (parent.height - self.height) / 2;
+                        // Align with the FIRST visual line, not the middle
+                        // of a possibly wrapped row.
+                        y: root.line-gap;
                         list-type: line.list-type;
                         marker: line.marker;
                         checked: line.checked;
@@ -158,6 +179,11 @@ export component Editor inherits Rectangle {
                         // dark themes" (bug #3).
                         color: row.has-band ? AppTheme.editor-text-on-highlight : AppTheme.editor-text;
                         selection-background-color: AppTheme.selection-colour;
+                        // NOTE: Slint 1.6 exposes has-focus as output-only —
+                        // programmatic focus arrives with 1.7's focus(). The
+                        // focus-line/focus-token properties are wired and
+                        // ready for it; today the FocusScope fallback in
+                        // Rust keeps typing alive after focus is lost.
 
                         edited => { root.line-edited(i, self.text); }
                         cursor-position-changed => { root.caret-moved(i); }

@@ -46,6 +46,33 @@ reported bugs are fixed.
    walk re-checked with `is_char_boundary`.
 10. Unbounded undo memory — the stack is capped at 200 states.
 
+### Fixed (Windows field report — round 2)
+1. Typing felt dead — keyboard input now always reaches the document: a
+   `FocusScope` over the editor offers every key to Rust (`key-command`),
+   which inserts characters, splits on Enter, and peels list markers on
+   Backspace (outdent → unlist → join previous). Native `TextInput` still
+   handles clicks on text directly.
+2. Enter no longer swallows focus — the caret line is re-tracked after every
+   structural edit (`focus-line`/`focus-token` are wired for Slint 1.7's
+   `focus()`; today the fallback keeps typing alive).
+3. Backspace at column 0 joins lines, outdents, or removes the bullet/number.
+4. List toggle is a toggle — choosing the current line's list type clears it.
+5. Word wrap — the editor `ScrollView` pins `viewport-width` to
+   `visible-width`, so long imported paragraphs wrap instead of running off.
+6. Theme dropdown shows all seven themes — the toolbar no longer clips its
+   children and the menu renders above the body (z-order 20).
+7. Find scrolls to the match and paints it: the matched line band plus a
+   distinct current-match band, with `viewport-y` driven by `reveal-line`.
+8. Extract panel docks beside Notes (right-hand `HorizontalLayout` pane with
+   an animated width) instead of floating above it.
+9. Visible borders/separators between toolbar, tab strip, editor, panels and
+   status bar in every theme.
+10. Tab close button pinned to the right edge of its tab (absolute position,
+    never squeezed by long titles).
+11. No console window — `windows_subsystem = "windows"` in release builds.
+12. CI builds a real installer: WiX 3.11 candle/light produce
+    `NotePad-Pro-1.0.2.msi`; exe + MSI ship as artifacts and on releases.
+
 ### Changed
 - Dropped `tokio` in favour of a synchronous model with a `std::thread`
   autosave loop (see `DEVIATIONS.md`).

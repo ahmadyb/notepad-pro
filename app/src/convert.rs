@@ -6,6 +6,7 @@
 use slint::{Color, ModelRc, SharedString, VecModel};
 
 use notepad_pro_core::config::settings::Settings;
+use notepad_pro_core::editor::find_replace::FindEngine;
 use notepad_pro_core::editor::line_model::Document;
 use notepad_pro_core::files::line_endings::LineEnding;
 use notepad_pro_core::highlight::palette::{channels, Palette};
@@ -68,7 +69,13 @@ pub fn marker_text(line: &EditorLine) -> String {
     }
 }
 
-pub fn line_to_ui(line: &EditorLine, palette: &Palette, selected: bool) -> EditorLineData {
+pub fn line_to_ui(
+    line: &EditorLine,
+    palette: &Palette,
+    selected: bool,
+    find_match: bool,
+    find_current: bool,
+) -> EditorLineData {
     let (_, rgba) = palette.resolve(line.colour);
     EditorLineData {
         text: SharedString::from(line.text.as_str()),
@@ -79,6 +86,8 @@ pub fn line_to_ui(line: &EditorLine, palette: &Palette, selected: bool) -> Edito
         indent: line.indent as i32,
         checked: line.checked,
         selected,
+        find_match,
+        find_current,
     }
 }
 
@@ -86,11 +95,23 @@ pub fn lines_to_model(
     lines: &[EditorLine],
     palette: &Palette,
     cursor_line: usize,
+    find: &FindEngine,
 ) -> ModelRc<EditorLineData> {
+    use std::collections::HashSet;
+    let match_lines: HashSet<usize> = find.matches.iter().map(|m| m.line).collect();
+    let current = find.current_match().map(|m| m.line);
     let rows: Vec<EditorLineData> = lines
         .iter()
         .enumerate()
-        .map(|(i, line)| line_to_ui(line, palette, i == cursor_line))
+        .map(|(i, line)| {
+            line_to_ui(
+                line,
+                palette,
+                i == cursor_line,
+                match_lines.contains(&i),
+                current == Some(i),
+            )
+        })
         .collect();
     ModelRc::from(std::rc::Rc::new(VecModel::from(rows)))
 }
@@ -346,7 +367,7 @@ mod tests {
             colour: LineColour::Yellow,
             ..Default::default()
         };
-        let ui = line_to_ui(&line, &Palette::default(), true);
+        let ui = line_to_ui(&line, &Palette::default(), true, false, false);
         assert_eq!(ui.colour, UiLineColour::Yellow);
         assert_eq!(color_to_rgba(ui.accent), 0xffe2_7aff);
         assert!(ui.selected);
@@ -358,7 +379,7 @@ mod tests {
             colour: LineColour::Custom(0xff88_00ff),
             ..Default::default()
         };
-        let ui = line_to_ui(&line, &Palette::default(), false);
+        let ui = line_to_ui(&line, &Palette::default(), false, false, false);
         assert_eq!(color_to_rgba(ui.accent), 0xff88_00ff);
     }
 
@@ -434,7 +455,7 @@ mod tests {
             EditorLine::new("b"),
             EditorLine::new("c"),
         ];
-        let model = lines_to_model(&lines, &Palette::default(), 1);
+        let model = lines_to_model(&lines, &Palette::default(), 1, &FindEngine::new());
         assert_eq!(model.row_count(), 3);
         assert_eq!(model.row_data(1).unwrap().text.as_str(), "b");
         assert!(model.row_data(1).unwrap().selected);

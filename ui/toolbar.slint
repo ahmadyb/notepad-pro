@@ -44,8 +44,10 @@ export component ToolBar inherits Rectangle {
 
     height: AppTheme.toolbar-height;
     background: AppTheme.toolbar-bg;
+    border-width: 1px;
     border-color: AppTheme.border-colour;
-    clip: true;
+    // No clip here: the theme dropdown is a child positioned below the bar.
+    // Clipping it hid the whole menu (the "themes won't open" report).
 
     // ── Theme menu ────────────────────────────────────────────────────────
     in-out property <bool> theme-menu-open: false;

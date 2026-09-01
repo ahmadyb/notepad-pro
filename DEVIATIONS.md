@@ -63,12 +63,20 @@ spec while adapting to the Rust + Slint target.
   because Slint's `KeyEvent` exposes only `text` + modifiers and some platforms
   deliver empty `text` with Ctrl held. Every action is also reachable from the
   toolbar, so the app is degraded, never crippled.
-* **Backspace at column 0 does not join lines**; the editor is a per-line model.
+* **Backspace at column 0** now outdents, then unlists, then joins with the
+  previous line (`backspace_at_cursor`), matching textarea behaviour.
 * **Frameless window drag** is left to the window manager (deviation 5).
-* **Reveal/auto-scroll/focus-to-line are recorded but not animated in Slint
-  1.6.** `changed` property callbacks are experimental in 1.6, so rows cannot
-  react to `focus-request`. `reveal-line()` still mirrors the target for the
-  status bar; the visual jump is the one thing 1.6 cannot do here.
+* **Programmatic focus is impossible in Slint 1.6.** `TextInput.has-focus`
+  and `FocusScope.has-focus` are output-only and 1.6 has no `initial-focus`
+  or `focus()` (both arrive in 1.7). Consequences: (a) the app cannot grab
+  focus at startup — the first edit needs one click in the editor; (b) after
+  Enter splits a line and the row model rebuilds, nothing is focused until
+  the user clicks again. Mitigation: a `FocusScope` wraps the editor and
+  routes every key to Rust via `key-command -> bool` (insert / split /
+  backspace-peel), so typing continues as long as the FocusScope keeps focus
+  — it sits outside the row repeater and survives rebuilds. `focus-line` /
+  `focus-token` properties are already wired end-to-end for a one-line
+  upgrade to 1.7's `focus()`.
 * **Enter is handled through the `edited` callback.** Slint 1.6's multi-line
   `TextInput` inserts the newline itself and only exposes `edited`, so
   `AppState::set_line_text` splits any embedded `"\n"`, continuing lists onto

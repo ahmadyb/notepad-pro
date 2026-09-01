@@ -42,6 +42,10 @@ export struct EditorLineData {
     indent: int,
     checked: bool,
     selected: bool,
+    // True on every line containing a find match; find-current marks the
+    // one the "n / N" navigation is sitting on.
+    find-match: bool,
+    find-current: bool,
 }
 
 // ── Tabs ──────────────────────────────────────────────────────────────────

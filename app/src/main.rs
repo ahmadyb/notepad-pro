@@ -7,6 +7,10 @@
 //! 5. Start the autosave loop and the animation driver.
 //! 6. Run the event loop; persist on the way out.
 
+// Release builds are a GUI app: no console window behind the editor on
+// Windows. Debug/test builds keep the console for --help and logs.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -119,6 +123,13 @@ fn main() -> Result<()> {
     let _blob_driver = start_blob_driver(&window);
 
     sync::sync_all(&window, &callbacks::lock(&state));
+
+    // The caret line takes keyboard focus at startup, so the user can type
+    // the moment the window appears.
+    {
+        let caret = callbacks::lock(&state).cursor.line;
+        sync::focus_line(&window, caret);
+    }
 
     tracing::info!(
         "{} {} starting",

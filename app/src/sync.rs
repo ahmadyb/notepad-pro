@@ -39,6 +39,7 @@ pub fn sync_editor(window: &AppWindow, state: &AppState) {
         &doc.lines,
         &state.palette,
         state.cursor.line,
+        &state.find,
     ));
     window.set_cursor_line(state.cursor.line as i32);
     window.set_cursor_col(state.cursor.col as i32);
@@ -124,4 +125,13 @@ pub fn sync_notes(window: &AppWindow, state: &AppState) {
 pub fn reveal_line(window: &AppWindow, index: usize) {
     window.invoke_reveal_line(index as i32);
     window.invoke_focus_line(index as i32);
+}
+
+/// Give keyboard focus to one editor row. The token bump makes the
+/// `has-focus` binding on the target row re-evaluate even when the same
+/// row is requested twice in a row.
+pub fn focus_line(window: &AppWindow, index: usize) {
+    window.set_editor_focus_line(index as i32);
+    let token = window.get_editor_focus_token();
+    window.set_editor_focus_token(token + 1);
 }

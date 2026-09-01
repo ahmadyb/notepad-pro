@@ -92,8 +92,11 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
                     };
                     if after_lines != before_lines || before_type != after_type {
                         // A line was split (Enter) or a markdown shortcut
-                        // converted it; the rows have to be rebuilt.
+                        // converted it; the rows have to be rebuilt — and
+                        // the caret must follow, or Enter feels dead.
                         sync::sync_all(&win, &lock(&s));
+                        let caret = lock(&s).cursor.line;
+                        sync::focus_line(&win, caret);
                     } else {
                         // Do NOT rebuild the model here: that would recreate
                         // the TextInput and drop the caret on every keystroke.
@@ -146,9 +149,40 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
     {
         let s = state.clone();
         let w = window.as_weak();
-        window.on_key_command(move |text, ctrl, shift| {
-            let Some(win) = w.upgrade() else { return };
-            handle_shortcut(&win, &s, text.as_str(), ctrl, shift);
+        window.on_key_command(move |text, ctrl, shift| -> bool {
+            let Some(win) = w.upgrade() else { return false };
+            if ctrl {
+                return handle_shortcut(&win, &s, text.as_str(), true, shift);
+            }
+            // FocusScope fallback: when no line TextInput has focus (the
+            // user clicked a band, the gutter or empty space), plain keys
+            // still edit the caret line — the "textarea" guarantee.
+            let Some(ch) = text.chars().next() else { return false };
+            match ch {
+                '\u{8}' => {
+                    let moved = lock(&s).backspace_at_cursor();
+                    sync::sync_all(&win, &lock(&s));
+                    if let Some(line) = moved {
+                        sync::focus_line(&win, line);
+                    }
+                    true
+                }
+                '\n' | '\r' => {
+                    lock(&s).press_enter();
+                    sync::sync_all(&win, &lock(&s));
+                    let caret = lock(&s).cursor.line;
+                    sync::focus_line(&win, caret);
+                    true
+                }
+                c if !c.is_control() => {
+                    lock(&s).insert_text_at_cursor(&c.to_string());
+                    sync::sync_all(&win, &lock(&s));
+                    let caret = lock(&s).cursor.line;
+                    sync::focus_line(&win, caret);
+                    true
+                }
+                _ => false,
+            }
         });
     }
 
@@ -242,7 +276,22 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
         let w = window.as_weak();
         window.on_list_type_chosen(move |kind| {
             let list_type = ListType::from_key(kind.as_str());
-            lock(&s).set_list_type(list_type);
+            // Re-clicking the style the caret line already uses clears it —
+            // markers must be removable without hunting for a "none" button.
+            let effective = {
+                let guard = lock(&s);
+                let current = guard
+                    .doc()
+                    .lines
+                    .get(guard.cursor.line)
+                    .map(|l| l.list_type);
+                if list_type != ListType::None && current == Some(list_type) {
+                    ListType::None
+                } else {
+                    list_type
+                }
+            };
+            lock(&s).set_list_type(effective);
             if let Some(win) = w.upgrade() {
                 sync::sync_all(&win, &lock(&s));
             }

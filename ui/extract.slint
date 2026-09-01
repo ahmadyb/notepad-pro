@@ -28,9 +28,9 @@ export component ExtractPanel inherits Rectangle {
     border-color: AppTheme.border-colour;
     clip: true;
 
-    // Slide in from the right.
-    animate x { duration: root.motion-enabled ? AppTheme.slow : 0ms;
-                easing: cubic-bezier(0.65, 0, 0.35, 1); }
+    // (The old slide-in `animate x` had to go: the panel now docks inside the
+    // body's HorizontalLayout, and Slint forbids x on layout children. The
+    // open/close animation lives on the width binding at the call site.)
 
     VerticalLayout {
         padding: 14px;

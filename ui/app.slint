@@ -65,6 +65,9 @@ export component AppWindow inherits Window {
     in-out property <int> active-tab: 0;
     in-out property <[EditorLineData]> lines;
     in-out property <bool> document-empty: true;
+    // Programmatic editor focus: Rust sets the row and bumps the token.
+    in-out property <int> editor-focus-line: -1;
+    in-out property <int> editor-focus-token: 0;
 
     in-out property <int> cursor-line: 0;
     in-out property <int> cursor-col: 0;
@@ -204,7 +207,7 @@ export component AppWindow inherits Window {
     callback line-clicked(int);
     callback checkbox-toggled(int);
     callback caret-moved(int);
-    callback key-command(string, bool, bool);
+    callback key-command(string, bool, bool) -> bool;
     callback tab-pressed(bool);
 
     callback note-chosen(int);
@@ -263,6 +266,8 @@ export component AppWindow inherits Window {
 
     public function focus-line(index: int) {
         root.focus-request = index;
+        root.editor-focus-line = index;
+        root.editor-focus-token += 1;
     }
 
     public function reveal-line(index: int) {
@@ -347,8 +352,13 @@ export component AppWindow inherits Window {
             new-tab => { root.tab-new(); }
         }
 
+        // Hairline so the tab strip, toolbar and body read as distinct.
+        Rectangle { height: 1px; background: AppTheme.border-colour; }
+
         // ── Toolbar ───────────────────────────────────────────────────────
         ToolBar {
+            // Above the body so the (unclipped) theme dropdown can overlap it.
+            z: 20;
             palette: root.palette;
             themes: ["light", "dark", "glass-dark", "clay-light",
                      "clay-dark", "neu-light", "neu-dark"];
@@ -424,37 +434,40 @@ export component AppWindow inherits Window {
                     font-family: root.font-family;
                     base-font-size: root.base-font-size;
                     focus-request: root.focus-request;
+                    focus-line: root.editor-focus-line;
+                    focus-token: root.editor-focus-token;
                     motion-enabled: root.animations;
 
                     line-edited(index, text) => { root.line-edited(index, text); }
-                    key-command(text, ctrl, shift) => { root.key-command(text, ctrl, shift); }
+                    key-command(text, ctrl, shift) => { root.key-command(text, ctrl, shift) }
                     line-clicked(index) => { root.line-clicked(index); }
                     checkbox-toggled(index) => { root.checkbox-toggled(index); }
                     caret-moved(index) => { root.caret-moved(index); }
                     tab-pressed(deeper) => { root.tab-pressed(deeper); }
                 }
 
-                // Extract panel slides in over the right edge.
-                extract := ExtractPanel {
-                    x: root.extract-open ? parent.width - self.width : parent.width;
-                    y: 0px;
-                    height: parent.height;
-                    z: 30;
-                    visible: root.extract-open || self.x < parent.width;
+            }
 
-                    colour-entries: root.extract-entries;
-                    preview-text: root.extract-preview;
-                    preview-label: root.extract-label;
-                    group-by-colour: root.extract-grouped;
-                    motion-enabled: root.animations;
+            // Extract panel docks beside the editor (mirroring the Notes
+            // sidebar on the left) instead of floating over the document.
+            ExtractPanel {
+                width: root.extract-open ? 330px : 0px;
+                visible: self.width > 0px;
+                animate width { duration: root.animations ? 280ms : 0ms;
+                                easing: cubic-bezier(0.65, 0, 0.35, 1); }
 
-                    colour-toggled(key, active) => { root.extract-colour-toggled(key, active); }
-                    order-changed(grouped) => { root.extract-order-changed(grouped); }
-                    copy-selected => { root.extract-copy(); }
-                    export-selected => { root.extract-export(); }
-                    open-in-tab => { root.extract-open-in-tab(); }
-                    close => { root.extract-closed(); }
-                }
+                colour-entries: root.extract-entries;
+                preview-text: root.extract-preview;
+                preview-label: root.extract-label;
+                group-by-colour: root.extract-grouped;
+                motion-enabled: root.animations;
+
+                colour-toggled(key, active) => { root.extract-colour-toggled(key, active); }
+                order-changed(grouped) => { root.extract-order-changed(grouped); }
+                copy-selected => { root.extract-copy(); }
+                export-selected => { root.extract-export(); }
+                open-in-tab => { root.extract-open-in-tab(); }
+                close => { root.extract-closed(); }
             }
         }
 

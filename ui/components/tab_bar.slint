@@ -15,6 +15,8 @@ export component TabBar inherits Rectangle {
 
     height: 38px;
     background: AppTheme.toolbar-bg;
+    border-width: 1px;
+    border-color: AppTheme.border-colour;
     clip: true;
 
     HorizontalLayout {
@@ -29,6 +31,9 @@ export component TabBar inherits Rectangle {
             height: 30px;
             border-radius: AppTheme.radius-sm;
             clip: true;
+            // Hairline outline so neighbouring tabs are visually separate.
+            border-width: 1px;
+            border-color: tab-root.is-active ? AppTheme.border-colour : transparent;
             background: tab-root.is-active
                 ? AppTheme.tab-active-bg
                 : (tab-touch.has-hover ? AppTheme.surface-hover : transparent);
@@ -52,7 +57,8 @@ export component TabBar inherits Rectangle {
 
             HorizontalLayout {
                 padding-left: 10px;
-                padding-right: 6px;
+                // Reserve the close-button slot so names elide before it.
+                padding-right: 30px;
                 spacing: 6px;
                 alignment: start;
 
@@ -72,27 +78,30 @@ export component TabBar inherits Rectangle {
                     visible: tab.dirty;
                     vertical-alignment: center;
                 }
+            }
 
-                Rectangle {
-                    z: 5;
-                    width: 18px;
-                    height: 18px;
-                    border-radius: 9px;
-                    background: close-touch.has-hover ? AppTheme.danger-colour : transparent;
-                    animate background { duration: AppTheme.fast; }
+            // Close button: pinned to the right edge of the tab, vertically
+            // centred — a fixed place instead of a layout leftover slot.
+            Rectangle {
+                x: parent.width - 26px;
+                y: (parent.height - 20px) / 2;
+                width: 20px;
+                height: 20px;
+                border-radius: 10px;
+                background: close-touch.has-hover ? AppTheme.danger-colour : transparent;
+                animate background { duration: AppTheme.fast; }
 
-                    Text {
-                        text: "✕";
-                        font-size: 10px;
-                        color: close-touch.has-hover ? AppTheme.accent-text : AppTheme.text-muted;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
+                Text {
+                    text: "✕";
+                    font-size: 11px;
+                    color: close-touch.has-hover ? AppTheme.accent-text : AppTheme.text-muted;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
 
-                    close-touch := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.tab-closed(i); }
-                    }
+                close-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.tab-closed(i); }
                 }
             }
         }
