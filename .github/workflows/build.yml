@@ -59,7 +59,8 @@ jobs:
         run: |
           foreach ($f in @("cargo.log", "cargo-test.log")) {
             if (Test-Path $f) {
-              Get-Content $f | Select-String -Pattern "^error|FAILED|panicked at|test result|^warning: unused|-->" | Select-Object -First 60 | ForEach-Object { Write-Output "::error::$_" }
+              Get-Content $f | Select-String -Pattern "^error|FAILED|panicked at|test result|^warning: unused|-->" | Select-Object -First 30 | ForEach-Object { Write-Output "::error::$_" }
+              Get-Content $f | Select-Object -Last 45 | ForEach-Object { Write-Output "::error::TAIL[$f] $_" }
             }
           }
 
