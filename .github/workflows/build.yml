@@ -42,10 +42,26 @@ jobs:
           shared-key: windows
 
       - name: Build (release)
-        run: cargo build --release --verbose
+        run: |
+          cargo build --release --verbose *>&1 | Tee-Object -FilePath cargo.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        shell: pwsh
 
       - name: Test
-        run: cargo test --verbose
+        run: |
+          cargo test --verbose *>&1 | Tee-Object -FilePath cargo-test.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        shell: pwsh
+
+      - name: Surface cargo log as annotations
+        if: failure()
+        shell: pwsh
+        run: |
+          foreach ($f in @("cargo.log", "cargo-test.log")) {
+            if (Test-Path $f) {
+              Get-Content $f | Select-String -Pattern "^error|^warning: unused|-->" | Select-Object -First 40 | ForEach-Object { Write-Output "::error::$_" }
+            }
+          }
 
       - name: Smoke-check the binary
         run: ./target/release/notepadpro.exe --help

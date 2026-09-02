@@ -1,6 +1,6 @@
 //! Window controls, editor editing, lists, find/replace and keyboard shortcuts.
 
-use slint::ComponentHandle;
+use slint::{ComponentHandle, SharedString};
 
 use notepad_pro_core::editor::list_engine::EnterOutcome;
 use notepad_pro_core::types::line::ListType;
