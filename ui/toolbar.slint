@@ -57,11 +57,11 @@ export component ToolBar inherits Rectangle {
         spacing: 4px;
         alignment: start;
 
-        RippleButton { label: "New"; clicked => { root.new-file(); } }
-        RippleButton { label: "Open"; btn-colour: AppTheme.surface; label-colour: AppTheme.text-colour;
+        RippleButton { label: "📝"; clicked => { root.new-file(); } }
+        RippleButton { label: "📂"; btn-colour: AppTheme.surface; label-colour: AppTheme.text-colour;
                        clicked => { root.open-file(); } }
-        RippleButton { label: "Save"; clicked => { root.save-file(); } }
-        RippleButton { label: "Save As"; btn-colour: AppTheme.surface; label-colour: AppTheme.text-colour;
+        RippleButton { label: "💾"; clicked => { root.save-file(); } }
+        RippleButton { label: "📑"; btn-colour: AppTheme.surface; label-colour: AppTheme.text-colour;
                        clicked => { root.save-as(); } }
 
         Rectangle { width: 1px; height: 20px; background: AppTheme.border-colour; }

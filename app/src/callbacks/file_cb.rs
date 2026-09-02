@@ -38,20 +38,23 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
         let s = state.clone();
         let w = window.as_weak();
         window.on_open_file_dialog(move || {
-            let paths = dialogs::file_dialog::open_dialog();
-            if let Some(win) = w.upgrade() {
-                if paths.is_empty() {
-                    toast(&win, "No file selected");
-                } else {
-                    open_paths(&win, &s, &paths);
-                }
-            }
-            crate::convert::string_model(
-                &paths
-                    .iter()
-                    .map(|p| p.to_string_lossy().into_owned())
-                    .collect::<Vec<_>>(),
-            )
+            let w2 = w.clone();
+            let s2 = s.clone();
+            dialogs::file_dialog::run_pick_async(
+                dialogs::file_dialog::open_dialog,
+                move |paths: Vec<PathBuf>| {
+                    if let Some(win) = w2.upgrade() {
+                        if paths.is_empty() {
+                            toast(&win, "No file selected");
+                        } else {
+                            open_paths(&win, &s2, &paths);
+                        }
+                    }
+                },
+            );
+            // The picker runs asynchronously now; the model result is
+            // historical API surface and always starts empty.
+            crate::convert::string_model(&Vec::new())
         });
     }
 
@@ -134,37 +137,44 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
         let s = state.clone();
         let w = window.as_weak();
         window.on_save_file_as(move |content: SharedString, default_name: SharedString| {
-            let Some(target) = dialogs::file_dialog::save_dialog(default_name.as_str()) else {
-                return SharedString::default();
-            };
+            let w2 = w.clone();
+            let s2 = s.clone();
+            let default = default_name.to_string();
             let text = content.to_string();
-            let path_string = target.to_string_lossy().into_owned();
+            dialogs::file_dialog::run_pick_async(
+                move || dialogs::file_dialog::save_dialog(&default),
+                move |target: Option<PathBuf>| {
+                    let Some(target) = target else { return };
+                    let path_string = target.to_string_lossy().into_owned();
 
-            let (encoding, ending) = {
-                let guard = lock(&s);
-                (guard.tab().encoding.clone(), guard.tab().line_ending)
-            };
-            if let Err(err) = manager::save_file(&target, &text, &encoding, ending) {
-                if let Some(win) = w.upgrade() {
-                    toast(&win, &format!("Save failed: {err}"));
-                }
-                return SharedString::default();
-            }
+                    let (encoding, ending) = {
+                        let guard = lock(&s2);
+                        (guard.tab().encoding.clone(), guard.tab().line_ending)
+                    };
+                    if let Err(err) = manager::save_file(&target, &text, &encoding, ending) {
+                        if let Some(win) = w2.upgrade() {
+                            toast(&win, &format!("Save failed: {err}"));
+                        }
+                        return;
+                    }
 
-            {
-                let mut guard = lock(&s);
-                let tab = guard.tab_mut();
-                tab.state.path = Some(path_string.clone());
-                tab.state.name = manager::file_name(&path_string);
-                tab.state.dirty = false;
-                tab.doc.mark_saved();
-                guard.settings.remember_file(&path_string);
-            }
-            if let Some(win) = w.upgrade() {
-                sync::sync_all(&win, &lock(&s));
-                toast(&win, &format!("Saved {}", path_string));
-            }
-            SharedString::from(path_string.as_str())
+                    {
+                        let mut guard = lock(&s2);
+                        let tab = guard.tab_mut();
+                        tab.state.path = Some(path_string.clone());
+                        tab.state.name = manager::file_name(&path_string);
+                        tab.state.dirty = false;
+                        tab.doc.mark_saved();
+                        guard.settings.remember_file(&path_string);
+                    }
+                    if let Some(win) = w2.upgrade() {
+                        sync::sync_all(&win, &lock(&s2));
+                        toast(&win, &format!("Saved {}", path_string));
+                    }
+                },
+            );
+            // Asynchronous now: the chosen path arrives via the timer.
+            SharedString::default()
         });
     }
 
@@ -174,17 +184,21 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
         let w = window.as_weak();
         window.on_save_extracted_text(move |content: SharedString, colours_label: SharedString| {
             let default = format!("extract-{}.txt", sanitise(colours_label.as_str()));
-            let Some(target) = dialogs::file_dialog::export_dialog(&default) else {
-                return;
-            };
+            let w2 = w.clone();
             let text = content.to_string();
-            let result = manager::save_file(&target, &text, "utf-8", LineEnding::Lf);
-            if let Some(win) = w.upgrade() {
-                match result {
-                    Ok(()) => toast(&win, &format!("Saved {}", target.display())),
-                    Err(err) => toast(&win, &format!("Export failed: {err}")),
-                }
-            }
+            dialogs::file_dialog::run_pick_async(
+                move || dialogs::file_dialog::export_dialog(&default),
+                move |target: Option<PathBuf>| {
+                    let Some(target) = target else { return };
+                    let result = manager::save_file(&target, &text, "utf-8", LineEnding::Lf);
+                    if let Some(win) = w2.upgrade() {
+                        match result {
+                            Ok(()) => toast(&win, &format!("Saved {}", target.display())),
+                            Err(err) => toast(&win, &format!("Export failed: {err}")),
+                        }
+                    }
+                },
+            );
         });
     }
 
@@ -280,7 +294,9 @@ pub fn close_active_tab(window: &AppWindow, state: &SharedState) {
     }
 }
 
-/// Save the active tab, prompting for a path when it has none.
+/// Save the active tab, prompting for a path when it has none. The prompt
+/// runs on a worker thread (`run_pick_async`) — the window keeps painting
+/// while the native dialog is open.
 pub fn save_active(window: &AppWindow, state: &SharedState) {
     let (existing, default_name) = {
         let guard = lock(state);
@@ -290,18 +306,29 @@ pub fn save_active(window: &AppWindow, state: &SharedState) {
         )
     };
 
-    let target = match existing {
-        Some(path) => PathBuf::from(path),
-        None => match dialogs::file_dialog::save_dialog(&default_name) {
-            Some(path) => path,
-            None => {
-                toast(window, "Save cancelled");
-                return;
+    if let Some(path) = existing {
+        finish_save(window, state, &PathBuf::from(path));
+        return;
+    }
+
+    let w = window.as_weak();
+    let s = state.clone();
+    dialogs::file_dialog::run_pick_async(
+        move || dialogs::file_dialog::save_dialog(&default_name),
+        move |target: Option<PathBuf>| {
+            if let Some(win) = w.upgrade() {
+                match target {
+                    Some(target) => finish_save(&win, &s, &target),
+                    None => toast(&win, "Save cancelled"),
+                }
             }
         },
-    };
+    );
+}
 
-    match lock(state).save_to(&target) {
+/// The shared tail of every save flow: write, sync, toast.
+fn finish_save(window: &AppWindow, state: &SharedState, target: &PathBuf) {
+    match lock(state).save_to(target) {
         Ok(()) => {
             sync::sync_all(window, &lock(state));
             toast(window, &format!("Saved {}", target.display()));
@@ -310,20 +337,22 @@ pub fn save_active(window: &AppWindow, state: &SharedState) {
     }
 }
 
-/// "Save As" — always prompts.
+/// "Save As" — always prompts (asynchronously; see `save_active`).
 pub fn save_as(window: &AppWindow, state: &SharedState) {
     let default_name = lock(state).tab().state.name.clone();
-    let Some(target) = dialogs::file_dialog::save_dialog(&default_name) else {
-        toast(window, "Save cancelled");
-        return;
-    };
-    match lock(state).save_to(&target) {
-        Ok(()) => {
-            sync::sync_all(window, &lock(state));
-            toast(window, &format!("Saved {}", target.display()));
-        }
-        Err(err) => toast(window, &format!("Save failed: {err}")),
-    }
+    let w = window.as_weak();
+    let s = state.clone();
+    dialogs::file_dialog::run_pick_async(
+        move || dialogs::file_dialog::save_dialog(&default_name),
+        move |target: Option<PathBuf>| {
+            if let Some(win) = w.upgrade() {
+                match target {
+                    Some(target) => finish_save(&win, &s, &target),
+                    None => toast(&win, "Save cancelled"),
+                }
+            }
+        },
+    );
 }
 
 /// Open files given on the command line.

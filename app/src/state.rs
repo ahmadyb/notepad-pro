@@ -380,6 +380,24 @@ impl AppState {
                     self.cursor.col = 0;
                 }
             }
+            // Home / End: jump within the line.
+            '\u{F729}' => self.cursor.col = 0,
+            '\u{F72B}' => self.cursor.col = len_at(self, self.cursor.line),
+            // Page up / page down: 20 rows at a time, column clamped.
+            '\u{F72C}' => {
+                self.cursor.line = self.cursor.line.saturating_sub(20);
+                let len = len_at(self, self.cursor.line);
+                if self.cursor.col > len {
+                    self.cursor.col = len;
+                }
+            }
+            '\u{F72D}' => {
+                self.cursor.line = (self.cursor.line + 20).min(max_line);
+                let len = len_at(self, self.cursor.line);
+                if self.cursor.col > len {
+                    self.cursor.col = len;
+                }
+            }
             '\u{F700}' => {
                 if self.cursor.line > 0 {
                     self.cursor.line -= 1;
@@ -451,6 +469,40 @@ impl AppState {
             self.mark_dirty();
             self.invalidate_find();
             return Some(new_line);
+        }
+        None
+    }
+
+    /// Forward delete (the `Delete` key): removes the character after the
+    /// caret, or joins the next line onto this one at end-of-line. Returns
+    /// the line the caret ended up on when the structure changed.
+    pub fn delete_at_cursor(&mut self) -> Option<usize> {
+        if self.doc().lines.is_empty() {
+            return None;
+        }
+        let line = self.cursor.line.min(self.doc().lines.len() - 1);
+        let col = self.cursor.col;
+        let mut chars: Vec<char> = self.doc().lines[line].text.chars().collect();
+        if col < chars.len() {
+            chars.remove(col);
+            let out: String = chars.into_iter().collect();
+            self.doc_mut().set_text(line, &out);
+            self.doc_mut().commit();
+            self.mark_dirty();
+            self.invalidate_find();
+            return None;
+        }
+        if line + 1 < self.doc().lines.len() {
+            if let Some((new_line, new_col)) = self.doc_mut().join_with_previous(line + 1) {
+                self.doc_mut().commit();
+                self.cursor = Cursor {
+                    line: new_line,
+                    col: new_col,
+                };
+                self.mark_dirty();
+                self.invalidate_find();
+                return Some(new_line);
+            }
         }
         None
     }

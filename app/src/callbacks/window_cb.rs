@@ -142,8 +142,22 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
     {
         let s = state.clone();
         let w = window.as_weak();
-        window.on_caret_moved(move |index: i32| {
-            lock(&s).cursor.line = index.max(0) as usize;
+        // Mouse-driven caret: the read-only row's TextInput reports where the
+        // native caret landed (glyph-ruler column); the Rust engine adopts it
+        // so keyboard edits continue from the clicked position.
+        window.on_caret_moved(move |index: i32, col: i32| {
+            {
+                let mut st = lock(&s);
+                let line = (index.max(0) as usize).min(st.doc().lines.len().saturating_sub(1));
+                let len = st
+                    .doc()
+                    .lines
+                    .get(line)
+                    .map(|l| l.text.chars().count())
+                    .unwrap_or(0);
+                st.cursor.line = line;
+                st.cursor.col = (col.max(0) as usize).min(len);
+            }
             if let Some(win) = w.upgrade() {
                 sync::sync_status(&win, &lock(&s));
             }
@@ -182,6 +196,19 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
                 // caret so sideways/vertical navigation works in fallback
                 // mode and the synthetic caret follows.
                 c @ '\u{F700}'..='\u{F703}' => {
+                    lock(&s).move_caret(c);
+                    sync::sync_all(&win, &lock(&s));
+                    true
+                }
+                // Delete key: forward delete (char under caret, or join
+                // with the next line at end-of-line).
+                '\u{7f}' => {
+                    lock(&s).delete_at_cursor();
+                    sync::sync_all(&win, &lock(&s));
+                    true
+                }
+                // Home / End / PageUp / PageDown.
+                c @ ('\u{F729}' | '\u{F72B}' | '\u{F72C}' | '\u{F72D}') => {
                     lock(&s).move_caret(c);
                     sync::sync_all(&win, &lock(&s));
                     true

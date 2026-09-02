@@ -25,6 +25,24 @@ reported bugs are fixed.
   `packaging`, `api-safety`) using `slint-testing`.
 - Packaging: `wix/main.wxs` (Windows MSI) and `debian/control`.
 
+### Fixed (editor & shell pass, 2026-09-02)
+- Editor is now a true textarea: rows are read-only `TextInput`s that own
+  the mouse (caret placement, drag/double-click selection, native Copy)
+  while *every* mutation routes through the Rust engine — Enter, Backspace,
+  Delete, Home/End/PageUp/PageDown and typing repeat indefinitely with no
+  re-click, and typed text is visible immediately.
+- Wrap-off mode no longer collapses rows to a narrow column: each row is
+  exactly as wide as its unwrapped text and the horizontal viewport follows
+  the widest row.
+- Save, Save As, Open, Export and "+ New note" no longer freeze the window:
+  native pickers and the SQLite insert run on worker threads, results are
+  delivered back via a 50 ms `slint::Timer` poll; the notes pool also fails
+  fast (500 ms connection timeout) instead of hanging.
+- Toolbar New/Open/Save/Save As are icon buttons (📝 📂 💾 📑).
+- New brand mark: generated `ui/assets/logo.png`, multi-size
+  `ui/assets/app.ico` (256/64/32/16), and the window/taskbar icon is now
+  actually set (`Window { icon: ... }`).
+
 ### Fixed (the ten originally reported bugs)
 1. Re-entrant serialisation recursion in the PyWebView bridge (bug #1) — the
    window handle is never stored in `AppState`; callbacks capture a weak

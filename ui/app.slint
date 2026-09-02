@@ -48,6 +48,9 @@ import {
 export component AppWindow inherits Window {
     title: root.window-title;
     background: AppTheme.window-bg;
+    // Window + taskbar icon (the generated brand mark). The installer's
+    // shortcut icon comes from ui/assets/app.ico, built from the same art.
+    icon: @image-url("assets/logo.png");
     // Slint 1.6: a Window cannot set both size and min-size. `preferred-*`
     // gives the initial size while letting the OS resize the window — and
     // the content stretches with it (a fixed `width:` binding was freezing
@@ -208,7 +211,7 @@ export component AppWindow inherits Window {
     callback line-edited(int, string);
     callback line-clicked(int);
     callback checkbox-toggled(int);
-    callback caret-moved(int);
+    callback caret-moved(int, int);
     callback key-command(string, bool, bool) -> bool;
     callback tab-pressed(bool);
 
@@ -445,7 +448,7 @@ export component AppWindow inherits Window {
                     key-command(text, ctrl, shift) => { root.key-command(text, ctrl, shift) }
                     line-clicked(index) => { root.line-clicked(index); }
                     checkbox-toggled(index) => { root.checkbox-toggled(index); }
-                    caret-moved(index) => { root.caret-moved(index); }
+                    caret-moved(index, col) => { root.caret-moved(index, col); }
                     tab-pressed(deeper) => { root.tab-pressed(deeper); }
                 }
 

@@ -47,7 +47,8 @@ export component Editor inherits Rectangle {
     callback key-command(string, bool, bool) -> bool;
     callback line-clicked(int);
     callback checkbox-toggled(int);
-    callback caret-moved(int);
+    // line index, glyph-ruler column — from the mouse-driven native caret.
+    callback caret-moved(int, int);
     // true = indent, false = outdent.
     callback tab-pressed(bool);
 
@@ -108,6 +109,16 @@ export component Editor inherits Rectangle {
                     property <bool> has-match: line.find-match;
                     property <length> content-x: root.gutter + (line.indent * root.indent-step)
                         + (line.list-type == ListType.None ? 0px : root.marker-width);
+
+                    // Wrap off: the row is exactly as wide as its unwrapped
+                    // text, so the stack's preferred-width (the widest row)
+                    // drives the horizontal viewport and every character
+                    // stays reachable. Wrap on: irrelevant — the viewport is
+                    // pinned to the visible width — and referencing the
+                    // parent here would close a binding loop.
+                    preferred-width: root.wrapping
+                        ? 0px
+                        : row.content-x + intrinsic.preferred-width + root.gutter;
 
                     // Never collapse below one text line: an EMPTY line's
                     // measuring Text reports zero height, which made fresh
@@ -175,17 +186,30 @@ export component Editor inherits Rectangle {
                         opacity: 0;
                     }
 
-                    // ── The editable line ─────────────────────────────────
+                    // ── The line's text ───────────────────────────────────
+                    // READ-ONLY by design (the "textarea contract"): the
+                    // input owns mouse caret placement, drag selection and
+                    // native Copy/SelectAll, but never mutates text itself —
+                    // it *ignores* characters, Enter, Backspace and arrows,
+                    // which bubble up to the FocusScope and into the Rust
+                    // engine. Because the `text` binding therefore never
+                    // dies, every edit — Enter included — reconciles in
+                    // place and the focused row keeps focus: typing is
+                    // continuous, exactly like a textarea.
                     input := TextInput {
                         x: row.content-x;
                         y: root.line-gap;
-                        width: measure.width;
+                        // Wrap on: share the viewport width. Wrap off: be
+                        // exactly as wide as the unwrapped text — never
+                        // collapse to a narrow column (bug m2).
+                        width: root.wrapping ? measure.width : intrinsic.preferred-width;
                         height: measure.preferred-height;
                         text: line.text;
                         font-family: root.font-family;
                         font-size: root.text-size;
                         wrap: root.wrap-mode;
                         single-line: false;
+                        read-only: true;
                         // Always dark on the light bands, themed elsewhere —
                         // this is the binding that fixes "invisible text on
                         // dark themes" (bug #3).
@@ -197,17 +221,33 @@ export component Editor inherits Rectangle {
                         // ready for it; today the FocusScope fallback in
                         // Rust keeps typing alive after focus is lost.
 
-                        edited => { root.line-edited(i, self.text); }
-                        cursor-position-changed => { root.caret-moved(i); }
+                        // The mouse still moves the native caret on a
+                        // read-only input; convert its pixel offset to a
+                        // column with the glyph ruler and hand it to Rust.
+                        cursor-position-changed(pt) => {
+                            root.caret-moved(i, max(0, Math.round(pt.x / (caret-twin.preferred-width / 10))));
+                        }
                     }
 
-                    // ── Fallback caret ────────────────────────────────────
-                    // While the FocusScope holds focus no TextInput shows a
-                    // native caret; draw a blinking one at the Rust-tracked
-                    // caret position so the user always sees where typing
-                    // will land. Slint 1.6 strings have no substring API, so
-                    // the x offset comes from the monospace advance width
-                    // (exact for the Consolas default, close otherwise).
+                    // Unwrapped measuring twin: the row's true text width
+                    // when wrapping is off (drives input.width and, via the
+                    // row's preferred-width, the horizontal viewport).
+                    intrinsic := Text {
+                        x: row.content-x;
+                        y: root.line-gap;
+                        text: line.text;
+                        font-family: root.font-family;
+                        font-size: root.text-size;
+                        wrap: no-wrap;
+                        opacity: 0;
+                    }
+
+                    // ── The caret ─────────────────────────────────────────
+                    // A read-only TextInput paints no caret of its own, so
+                    // the engine's cursor IS the caret: drawn on the cursor
+                    // line whether the keyboard focus sits on a row input or
+                    // on the fallback FocusScope. The x offset comes from
+                    // the monospace advance width (exact for Consolas).
                     caret-twin := Text {
                         text: "0123456789";
                         font-family: root.font-family;
@@ -216,7 +256,7 @@ export component Editor inherits Rectangle {
                         opacity: 0;
                     }
 
-                    if root.kb-focus && i == root.cursor-line : Rectangle {
+                    if i == root.cursor-line : Rectangle {
                         x: row.content-x + (caret-twin.preferred-width / 10) * root.cursor-col;
                         y: root.line-gap;
                         width: 2px;

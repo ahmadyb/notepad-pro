@@ -53,53 +53,36 @@ pub fn sync_editor(window: &AppWindow, state: &AppState) {
     window.set_native_frame(state.settings.native_frame);
 }
 
-/// Reconciles `fresh` against the live row model instead of replacing it.
+/// Reconciles `fresh` against the live row model strictly in place.
 ///
-/// Replacing the model (`set_lines`) makes the repeater destroy and recreate
-/// every row: the focused `TextInput` dies, Slint 1.6 cannot re-focus it
-/// (`has-focus` is output-only, no `focus()`), and the user has to click
-/// again before typing continues. So when the line count is unchanged we
-/// mutate the existing `VecModel` in place and keep unchanged rows — with
-/// their focus and caret — alive:
-/// * identical rows are skipped entirely;
-/// * rows whose colour/marker/flags changed get `set_row_data` (bindings
-///   stay alive, text and caret untouched);
-/// * rows whose **text** changed are removed + re-inserted, because native
-///   editing kills the one-way `text:` binding and a recreated row is the
-///   only way to display the new text.
-///
-/// When the line count *does* change (Enter split, backspace join, paste,
-/// file load) the row structure has shifted and every `TextInput` after the
-/// edit holds stale text, so there is nothing to reconcile — we replace the
-/// whole model, which is the correct (if focus-dropping) rebuild.
+/// The editor rows are READ-ONLY `TextInput`s: their `text:` bindings never
+/// die, so the model is the single source of truth and every change —
+/// including line splits and joins — can be applied with `set_row_data` /
+/// `push` / `remove` without ever recreating a row. Repeated-row components
+/// survive, and with them the focused row's keyboard focus: typing and
+/// Enter continue uninterrupted, exactly like a textarea. (Replacing the
+/// whole model would make the repeater destroy and recreate every row,
+/// dropping focus — Slint 1.6 cannot re-focus programmatically.)
 fn update_lines(window: &AppWindow, fresh: Vec<EditorLineData>) {
-    let install = |window: &AppWindow, fresh: Vec<EditorLineData>| {
-        window.set_lines(ModelRc::from(std::rc::Rc::new(VecModel::from(fresh))));
-    };
-
     let current = window.get_lines();
     let Some(vm) = current.as_any().downcast_ref::<VecModel<EditorLineData>>() else {
         // First sync (or a model we did not build): install it wholesale.
-        return install(window, fresh);
+        window.set_lines(ModelRc::from(std::rc::Rc::new(VecModel::from(fresh))));
+        return;
     };
 
-    if vm.row_count() != fresh.len() {
-        // Line count changed — rebuild rather than reconcile (see above).
-        return install(window, fresh);
-    }
-
-    // Same count: reconcile in place.
-    for (i, row) in fresh.iter().enumerate() {
+    let shared = vm.row_count().min(fresh.len());
+    for (i, row) in fresh.iter().take(shared).enumerate() {
         let Some(cur) = vm.row_data(i) else { continue };
-        if cur == *row {
-            continue;
-        }
-        if cur.text == row.text {
+        if cur != *row {
             vm.set_row_data(i, row.clone());
-        } else {
-            vm.remove(i);
-            vm.insert(i, row.clone());
         }
+    }
+    for row in fresh.iter().skip(shared) {
+        vm.push(row.clone());
+    }
+    while vm.row_count() > fresh.len() {
+        vm.remove(vm.row_count() - 1);
     }
 }
 

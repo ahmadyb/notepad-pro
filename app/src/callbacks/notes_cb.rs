@@ -162,14 +162,26 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
         let s = state.clone();
         let w = window.as_weak();
         window.on_note_new(move || {
-            let Some(win) = w.upgrade() else { return };
-            match lock(&s).new_note() {
-                Ok(_) => {
-                    sync::sync_notes(&win, &lock(&s));
-                    sync::sync_flags(&win, &lock(&s));
-                }
-                Err(err) => toast(&win, &format!("Cannot create note: {err}")),
-            }
+            let w2 = w.clone();
+            let s2 = s.clone();
+            let s3 = s.clone();
+            // The SQLite insert runs on a worker thread and the sidebar is
+            // re-synced back on the event loop — "+ New" must never freeze
+            // the window, even if the notes database is momentarily busy.
+            dialogs::file_dialog::run_pick_async(
+                move || lock(&s3).new_note().map_err(|e| e.to_string()),
+                move |result: std::result::Result<i64, String>| {
+                    if let Some(win) = w2.upgrade() {
+                        match result {
+                            Ok(_) => {
+                                sync::sync_notes(&win, &lock(&s2));
+                                sync::sync_flags(&win, &lock(&s2));
+                            }
+                            Err(err) => toast(&win, &format!("Cannot create note: {err}")),
+                        }
+                    }
+                },
+            );
         });
     }
 

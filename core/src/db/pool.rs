@@ -20,6 +20,9 @@ pub fn create_pool(path: &Path) -> Result<SqlitePool> {
     let manager = SqliteConnectionManager::file(&path_string).with_init(initialise);
     Pool::builder()
         .max_size(POOL_SIZE)
+        // A leaked connection must never turn a UI callback into a
+        // permanent freeze ("Not responding") — fail fast instead.
+        .connection_timeout(std::time::Duration::from_millis(500))
         .build(manager)
         .with_context(|| format!("cannot open notes database at {path_string}"))
 }
