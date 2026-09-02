@@ -67,8 +67,10 @@
                       WorkingDirectory="INSTALLFOLDER"
                       Icon="AppIcon" />
             <RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall" />
-            <!-- HKLM, not HKCU: the package is per-machine, and light's ICE43 rejects per-user key paths in per-machine installs. -->
-            <RegistryValue Root="HKLM" Key="Software\NotePadPro" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+            <!-- HKCU is the documented keypath for non-advertised Start Menu
+                 shortcuts (ICE38/ICE43 demand it; with per-machine scope it
+                 yields at most warning LGHT1076 from ICE57, not an error). -->
+            <RegistryValue Root="HKCU" Key="Software\NotePadPro" Name="installed" Type="integer" Value="1" KeyPath="yes" />
           </Component>
         </Directory>
       </Directory>
