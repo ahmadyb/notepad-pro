@@ -32,26 +32,38 @@ $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bound
 $graphics.Dispose()
 $bmp.Save("ui_probe_$Tag.png")
 
-# Editor region: right of the sidebar / toolbar chrome. Sample a grid and
-# count pixels that differ strongly from the editor background colour taken
-# at a known-empty spot near the right edge.
+# Coarse ASCII map of the editor region so the actual layout (column width,
+# band positions) is readable from the check-run annotations.
+$x0 = 0; $x1 = [Math]::Min($bounds.Width - 10, 1279)
+$y0 = 140; $y1 = [Math]::Min($bounds.Height - 10, 1019)
 $bg = $bmp.GetPixel([Math]::Min($bounds.Width - 40, 1240), 700)
 $textish = 0
-$maxrun = 0
-for ($y = 200; $y -lt [Math]::Min($bounds.Height - 60, 950); $y += 2) {
-    $run = 0
-    for ($x = 430; $x -lt [Math]::Min($bounds.Width - 20, 1260); $x += 2) {
-        $px = $bmp.GetPixel($x, $y)
-        $d = [Math]::Abs([int]$px.R - [int]$bg.R) + [Math]::Abs([int]$px.G - [int]$bg.G) + [Math]::Abs([int]$px.B - [int]$bg.B)
-        if ($d -gt 90) { $textish++; $run++ ; if ($run -gt $maxrun) { $maxrun = $run } } else { $run = 0 }
+$cell = 16
+$mapRows = @()
+for ($y = $y0; $y -lt $y1; $y += $cell) {
+    $line = ""
+    for ($x = $x0; $x -lt $x1; $x += $cell) {
+        $hit = 0
+        for ($dy = 0; $dy -lt $cell; $dy += 4) {
+            for ($dx = 0; $dx -lt $cell; $dx += 4) {
+                $px = $bmp.GetPixel([Math]::Min($x + $dx, $bounds.Width - 1), [Math]::Min($y + $dy, $bounds.Height - 1))
+                $d = [Math]::Abs([int]$px.R - [int]$bg.R) + [Math]::Abs([int]$px.G - [int]$bg.G) + [Math]::Abs([int]$px.B - [int]$bg.B)
+                if ($d -gt 90) { $hit++ }
+            }
+        }
+        if ($hit -ge 3) { $line += "#"; $textish++ } elseif ($hit -ge 1) { $line += "+" } else { $line += "." }
     }
+    $mapRows += $line
 }
 $bmp.Dispose()
 
-Write-Output "PROBE[$Tag] textish=$textish maxrun=$maxrun bg=($($bg.R),$($bg.G),$($bg.B)) screen=$($bounds.Width)x$($bounds.Height)"
-Write-Output "::warning::PROBE[$Tag] textish=$textish maxrun=$maxrun"
+Write-Output "PROBE[$Tag] textcells=$textish bg=($($bg.R),$($bg.G),$($bg.B)) screen=$($bounds.Width)x$($bounds.Height)"
+for ($r = 0; $r -lt $mapRows.Count; $r += 6) {
+    $chunk = $mapRows[$r..([Math]::Min($r + 5, $mapRows.Count - 1))] -join "|"
+    Write-Output "::warning::MAP[$Tag] r$r : $chunk"
+}
 if ($textish -lt 150) {
-    Write-Output "::error::EDITOR-BLANK[$Tag] only $textish text pixels (maxrun $maxrun) - editor is not painting document text"
+    Write-Output "::error::EDITOR-BLANK[$Tag] only $textish text cells - editor is not painting document text"
 }
 
 Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
