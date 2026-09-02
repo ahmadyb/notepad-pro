@@ -62,6 +62,12 @@ for ($y = $y0; $y -lt $y1; $y += $cell) {
     }
     $mapRows += $line
 }
+# Diagnostic: exact colours across the left edge to identify the gutter strip.
+# Emitted first so they survive the annotations cap.
+foreach ($px in @(4, 16, 30, 44, 60, 90, 130)) {
+    $c = $bmp.GetPixel($px, 400)
+    Write-Output "::warning::RGB[$Tag] x=$px : ($($c.R),$($c.G),$($c.B))"
+}
 $bmp.Dispose()
 
 Write-Output "PROBE[$Tag] textcells=$textish bg=($($bg.R),$($bg.G),$($bg.B)) screen=$($bounds.Width)x$($bounds.Height)"
