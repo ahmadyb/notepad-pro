@@ -25,6 +25,20 @@ reported bugs are fixed.
   `packaging`, `api-safety`) using `slint-testing`.
 - Packaging: `wix/main.wxs` (Windows MSI) and `debian/control`.
 
+### Changed (editor rebuilt as a single native surface, 2026-09-02)
+- The editor is now ONE native multi-line `TextInput` over the whole
+  document — the Windows-Notepad/VS-Code architecture: native blinking caret
+  everywhere, unlimited Enter, repeated typing with no re-click, multi-space,
+  click-drag / double-click / triple-click selection, Ctrl+A/C/X/V, paste
+  without formatting, Home/End/PageUp/PageDown — all engine-native.
+- Rust remains the source of truth through a two-way `doc-text` binding:
+  native edits flow into the line model (`edited`), Rust mutations (open,
+  undo, replace-all) flow back only when the text actually differs, so the
+  caret never jumps while typing.
+- Highlight bands, list markers and the cursor wash are overlays positioned
+  at renderer-measured line geometry; wrap-off keeps every character
+  reachable via horizontal scrolling.
+
 ### Fixed (editor & shell pass, 2026-09-02)
 - Editor is now a true textarea: rows are read-only `TextInput`s that own
   the mouse (caret placement, drag/double-click selection, native Copy)
