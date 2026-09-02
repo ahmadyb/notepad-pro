@@ -34,32 +34,32 @@ $bmp.Save("ui_probe_$Tag.png")
 
 # Coarse ASCII map of the editor region so the actual layout (column width,
 # band positions) is readable from the check-run annotations.
-$x0 = 0; $x1 = [Math]::Min($bounds.Width - 10, 1279)
-$y0 = 140; $y1 = [Math]::Min($bounds.Height - 10, 1019)
+$x0 = 0; $x1 = 720
+$y0 = 140; $y1 = 620
 $bg = $bmp.GetPixel([Math]::Min($bounds.Width - 40, 1240), 700)
 $textish = 0
-$cell = 16
+$cell = 4
 $mapRows = @()
 for ($y = $y0; $y -lt $y1; $y += $cell) {
     $line = ""
     for ($x = $x0; $x -lt $x1; $x += $cell) {
         $hit = 0
-        for ($dy = 0; $dy -lt $cell; $dy += 4) {
-            for ($dx = 0; $dx -lt $cell; $dx += 4) {
+        for ($dy = 0; $dy -lt $cell; $dy += 2) {
+            for ($dx = 0; $dx -lt $cell; $dx += 2) {
                 $px = $bmp.GetPixel([Math]::Min($x + $dx, $bounds.Width - 1), [Math]::Min($y + $dy, $bounds.Height - 1))
                 $d = [Math]::Abs([int]$px.R - [int]$bg.R) + [Math]::Abs([int]$px.G - [int]$bg.G) + [Math]::Abs([int]$px.B - [int]$bg.B)
-                if ($d -gt 90) { $hit++ }
+                if ($d -gt 60) { $hit++ }
             }
         }
-        if ($hit -ge 3) { $line += "#"; $textish++ } elseif ($hit -ge 1) { $line += "+" } else { $line += "." }
+        if ($hit -ge 2) { $line += "#"; $textish++ } elseif ($hit -ge 1) { $line += "+" } else { $line += "." }
     }
     $mapRows += $line
 }
 $bmp.Dispose()
 
 Write-Output "PROBE[$Tag] textcells=$textish bg=($($bg.R),$($bg.G),$($bg.B)) screen=$($bounds.Width)x$($bounds.Height)"
-for ($r = 0; $r -lt $mapRows.Count; $r += 6) {
-    $chunk = $mapRows[$r..([Math]::Min($r + 5, $mapRows.Count - 1))] -join "|"
+for ($r = 0; $r -lt $mapRows.Count; $r += 4) {
+    $chunk = $mapRows[$r..([Math]::Min($r + 3, $mapRows.Count - 1))] -join "|"
     Write-Output "::warning::MAP[$Tag] r$r : $chunk"
 }
 if ($textish -lt 150) {
