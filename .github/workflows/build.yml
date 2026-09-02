@@ -66,6 +66,15 @@ jobs:
         with:
           name: wix-log
           path: wix.log
+
+      - name: Surface WiX log as annotations
+        if: failure()
+        shell: pwsh
+        run: |
+          if (Test-Path wix.log) {
+            Get-Content wix.log | ForEach-Object { Write-Output "::error::$_" }
+          }
+
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
