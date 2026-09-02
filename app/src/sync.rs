@@ -9,6 +9,7 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use crate::convert;
 use crate::state::AppState;
 use crate::ui::{AppWindow, EditorLineData};
+use notepad_pro_core::types::line::ListType;
 
 /// Everything except the line model. Cheap enough to call after any change.
 pub fn sync_light(window: &AppWindow, state: &AppState) {
@@ -35,7 +36,8 @@ pub fn sync_tabs(window: &AppWindow, state: &AppState) {
 
 pub fn sync_editor(window: &AppWindow, state: &AppState) {
     let doc = state.doc();
-    let fresh = convert::lines_vec(&doc.lines, &state.palette, state.cursor.line, &state.find);
+    let mut fresh =
+        convert::lines_vec(&doc.lines, &state.palette, state.cursor.line, &state.find);
     // Longest line (in chars) drives the wrap-off horizontal viewport.
     let max_len = doc
         .lines
@@ -44,7 +46,33 @@ pub fn sync_editor(window: &AppWindow, state: &AppState) {
         .max()
         .unwrap_or(0);
     window.set_max_line_len(max_len as i32);
+
+    // Overlay geometry from renderer-measured metrics, then the row model.
+    let geom = compute_geom(window, state);
+    for (row, g) in fresh.iter_mut().zip(geom.iter()) {
+        row.y_pos = g.0;
+        row.band_h = g.1;
+    }
     update_lines(window, fresh);
+
+    // Cursor-line wash.
+    if let Some(g) = geom.get(state.cursor.line) {
+        window.set_cursor_y(g.0);
+        window.set_cursor_h(g.1);
+    }
+
+    // Document surface (two-way binding): push only when Rust changed the
+    // text (file open, undo, replace-all) so the native caret survives
+    // ordinary typing.
+    let doc_text = doc
+        .lines
+        .iter()
+        .map(|l| l.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if window.get_doc_text().to_string() != doc_text {
+        window.set_doc_text(doc_text.as_str().into());
+    }
     window.set_cursor_line(state.cursor.line as i32);
     window.set_cursor_col(state.cursor.col as i32);
     window.set_document_empty(doc.is_empty());
@@ -57,6 +85,36 @@ pub fn sync_editor(window: &AppWindow, state: &AppState) {
     window.set_animations(state.settings.animations);
     window.set_theme(state.settings.theme.as_str().into());
     window.set_native_frame(state.settings.native_frame);
+}
+
+/// Per-line overlay geometry: `(y, height)` in logical px. The line pitch is
+/// renderer-measured (two-line ruler in the editor); with wrapping on, each
+/// line's visual-line count comes from the glyph ruler's advance width.
+pub fn compute_geom(window: &AppWindow, state: &AppState) -> Vec<(f32, f32)> {
+    let pitch = window.get_line_pitch().max(1.0);
+    let char_w = window.get_editor_char_w();
+    let view_w = window.get_editor_view_w();
+    let zoom = state.settings.zoom;
+    let mut out = Vec::with_capacity(state.doc().lines.len());
+    let mut y = 0.0f32;
+    for line in &state.doc().lines {
+        let content_x = (10.0
+            + line.indent as f32 * 22.0
+            + if line.list_type != ListType::None { 26.0 } else { 0.0 })
+            * zoom;
+        let vis = if state.settings.word_wrap && view_w > 1.0 && char_w > 0.1 {
+            let avail = (view_w - content_x - 26.0 * zoom).max(1.0);
+            ((line.text.chars().count() as f32 * char_w) / avail)
+                .ceil()
+                .max(1.0)
+        } else {
+            1.0
+        };
+        let h = vis * pitch;
+        out.push((y, h));
+        y += h;
+    }
+    out
 }
 
 /// Reconciles `fresh` against the live row model strictly in place.

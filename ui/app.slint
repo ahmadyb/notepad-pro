@@ -71,6 +71,16 @@ export component AppWindow inherits Window {
     in-out property <[EditorLineData]> lines;
     // Character count of the longest document line (wrap-off viewport size).
     in-out property <int> max-line-len: 0;
+    // The whole document text, two-way with the editor's TextInput.
+    in-out property <string> doc-text: "";
+    // Renderer-measured editor metrics (read by Rust for overlay geometry).
+    // No defaults: the bindings below are the sole source.
+    in-out property <length> line-pitch;
+    in-out property <length> editor-char-w;
+    in-out property <length> editor-view-w;
+    // Cursor wash geometry, computed by Rust.
+    in-out property <length> cursor-y: 0px;
+    in-out property <length> cursor-h: 0px;
     in-out property <bool> document-empty: true;
     // Programmatic editor focus: Rust sets the row and bumps the token.
     in-out property <int> editor-focus-line: -1;
@@ -210,10 +220,9 @@ export component AppWindow inherits Window {
     callback tab-closed(int);
     callback tab-new();
 
-    callback line-edited(int, string);
-    callback line-clicked(int);
+    callback doc-edited(string);
+    callback caret-point(length, length);
     callback checkbox-toggled(int);
-    callback caret-moved(int, int);
     callback key-command(string, bool, bool) -> bool;
     callback tab-pressed(bool);
 
@@ -278,8 +287,14 @@ export component AppWindow inherits Window {
     }
 
     public function reveal-line(index: int) {
-        editor.reveal(index);
+        editor.reveal-y(root.cursor-y);
     }
+
+    // Renderer-measured editor metrics, read by Rust for the overlay
+    // geometry (band y offsets, caret line/col from pixel points).
+    line-pitch: editor.line-pitch;
+    editor-char-w: editor.char-w;
+    editor-view-w: editor.view-w;
 
     // ════════════════════════════════════════════════════════════════════
     //  LAYOUT
@@ -436,22 +451,20 @@ export component AppWindow inherits Window {
                 editor := Editor {
                     lines: root.lines;
                     max-line-len: root.max-line-len;
+                    doc-text <=> root.doc-text;
                     cursor-line: root.cursor-line;
-                    cursor-col: root.cursor-col;
                     zoom: root.zoom;
                     wrapping: root.word-wrap;
                     font-family: root.font-family;
                     base-font-size: root.base-font-size;
-                    focus-request: root.focus-request;
-                    focus-line: root.editor-focus-line;
-                    focus-token: root.editor-focus-token;
                     motion-enabled: root.animations;
+                    cursor-y: root.cursor-y;
+                    cursor-h: root.cursor-h;
 
-                    line-edited(index, text) => { root.line-edited(index, text); }
+                    doc-edited(text) => { root.doc-edited(text); }
+                    caret-point(x, y) => { root.caret-point(x, y); }
                     key-command(text, ctrl, shift) => { root.key-command(text, ctrl, shift) }
-                    line-clicked(index) => { root.line-clicked(index); }
                     checkbox-toggled(index) => { root.checkbox-toggled(index); }
-                    caret-moved(index, col) => { root.caret-moved(index, col); }
                     tab-pressed(deeper) => { root.tab-pressed(deeper); }
                 }
 

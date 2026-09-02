@@ -79,6 +79,8 @@ pub fn line_to_ui(
     let (_, rgba) = palette.resolve(line.colour);
     EditorLineData {
         text: SharedString::from(line.text.as_str()),
+        y_pos: 0.0,
+        band_h: 0.0,
         colour: ui_colour(line.colour),
         accent: rgba_to_color(rgba),
         list_type: ui_list_type(line.list_type),

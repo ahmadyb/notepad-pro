@@ -32,6 +32,9 @@ export enum ListType {
 export struct EditorLineData {
     // Text shown in the TextInput.
     text: string,
+    // Overlay geometry (renderer-measured pitch × visual lines), set by Rust.
+    y-pos: length,
+    band-h: length,
     colour: LineColour,
     // Resolved swatch colour for the band and the accent bar. Rust looks the
     // palette up so custom colours work without a Slint-side map.

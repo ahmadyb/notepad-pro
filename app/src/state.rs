@@ -20,7 +20,7 @@ use notepad_pro_core::highlight::palette::{
 };
 use notepad_pro_core::highlight::stats;
 use notepad_pro_core::types::api::{Session, StatusData, TabState};
-use notepad_pro_core::types::line::{LineColour, ListType};
+use notepad_pro_core::types::line::{EditorLine, LineColour, ListType};
 use notepad_pro_core::types::note::{CustomColour, Note, NoteMetadata};
 
 /// An action waiting behind a confirm dialog.
@@ -269,6 +269,56 @@ impl AppState {
     }
 
     // ── Editing ───────────────────────────────────────────────────────────
+
+    /// Whole-document replace from the single-surface editor's `edited`
+    /// callback. Per-line metadata (colour, list, indent) is preserved by
+    /// index; freshly typed markdown list prefixes are converted.
+    pub fn apply_full_text(&mut self, text: &str) {
+        let new_texts: Vec<String> = text
+            .split('\n')
+            .map(|s| s.trim_end_matches('\r').to_string())
+            .collect();
+        let old = std::mem::take(&mut self.doc_mut().lines);
+        let mut lines: Vec<EditorLine> = new_texts
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let mut line = old.get(i).cloned().unwrap_or_default();
+                line.text = t.clone();
+                line
+            })
+            .collect();
+        for (i, t) in new_texts.iter().enumerate() {
+            if old.get(i).map(|o| &o.text) != Some(t) {
+                ListEngine::try_markdown_shortcut(&mut lines[i]);
+            }
+        }
+        self.doc_mut().lines = lines;
+        self.doc_mut().commit();
+        self.mark_dirty();
+        self.invalidate_find();
+    }
+
+    /// After the native surface split line `caret_line` with Enter, re-join
+    /// the halves and let the list engine re-split so bullets / numbers /
+    /// checks continue onto the new line.
+    pub fn continue_list_after_enter(&mut self, caret_line: usize) {
+        let count = self.doc().line_count();
+        if caret_line == 0 || caret_line >= count {
+            return;
+        }
+        let a = self.doc().lines[caret_line - 1].text.clone();
+        let b = self.doc().lines[caret_line].text.clone();
+        let col = a.chars().count();
+        self.doc_mut().lines.remove(caret_line);
+        self.doc_mut().lines[caret_line - 1].text = format!("{a}{b}");
+        ListEngine::handle_enter(&mut self.doc_mut().lines, caret_line - 1, col);
+        self.doc_mut().commit();
+        self.cursor.line = caret_line;
+        self.cursor.col = 0;
+        self.mark_dirty();
+        self.invalidate_find();
+    }
 
     pub fn set_line_text(&mut self, index: usize, text: &str) -> bool {
         if text.contains('\n') {

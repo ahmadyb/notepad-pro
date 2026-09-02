@@ -1,18 +1,19 @@
 // ui/editor.slint
 //
-// The document view: one TextInput per line, exactly mirroring the original
-// div-per-line contenteditable design. That is what makes a per-line colour
-// band and a per-line list marker possible at all.
+// The document is ONE native multi-line TextInput — the same architecture as
+// Windows Notepad, VS Code or Sublime: one text surface owns the caret, the
+// blinking, the selection (click-drag, double-click word, triple-click line,
+// Ctrl+A, Shift+Arrow), the clipboard (Ctrl+C/X/V, paste without formatting)
+// and unlimited Enter/typing. Rust stays the source of truth: every native
+// edit arrives through `edited` with the full text and is reconciled into the
+// line model (highlights, lists, find); Rust-side mutations (file open, undo,
+// replace-all) flow back through the two-way `doc-text` binding.
 //
-// Row heights come from an invisible measuring Text that shares the font and
-// wrap mode of the TextInput, so wrapped lines expand and unwrapped lines do
-// not (Slint's TextInput does not publish a preferred height of its own).
-//
-// Slint 1.6 gives TextInput only three callbacks — `edited`, `accepted` and
-// `cursor-position-changed`. Enter is therefore owned by Rust: the multi-line
-// TextInput inserts a "\n", `edited` fires, and `AppState::set_line_text`
-// splits the line (continuing lists, renumbering). Ctrl/Tab shortcuts live on
-// a wrapping FocusScope, which sees the keys the TextInput rejects.
+// Per-line chrome (highlight bands, list markers, find bands, cursor wash)
+// is painted by overlay elements positioned at renderer-measured line
+// geometry: `line-pitch` comes from a two-line ruler Text (exact native
+// pitch), and Rust computes each row's y offset / visual-line count with the
+// glyph ruler (`char-w`) when wrapping is on.
 
 import { AppTheme } from "themes/tokens.slint";
 import { EditorLineData, LineColour, ListType } from "model.slint";
@@ -21,84 +22,58 @@ import { ScrollView } from "std-widgets.slint";
 
 export component Editor inherits Rectangle {
     in property <[EditorLineData]> lines;
-    in-out property <int> cursor-line: 0;
-    in property <int> cursor-col: 0;
+    // The whole document, two-way with the TextInput and with Rust.
+    in-out property <string> doc-text;
+    in property <int> cursor-line: 0;
     in property <float> zoom: 1.0;
     in property <bool> wrapping: true;
-    // Character count of the longest line; Rust maintains it. With wrap off
-    // it sizes the horizontal viewport (glyph-ruler math, no measuring twins,
-    // no layout feedback loops) so every character stays reachable.
+    // Character count of the longest line; sizes the wrap-off surface.
     in property <int> max-line-len: 0;
-    // `word-wrap` is both our bool and a TextWrap enumerator, so map it once.
-    property <TextWrap> wrap-mode: root.wrapping ? word-wrap : no-wrap;
     in property <string> font-family: "Consolas";
     in property <length> base-font-size: 14px;
-    // Rust bumps this to record a reveal request (see reveal()).
-    in property <int> focus-request: -1;
-    // Programmatic focus: Rust sets the target row and bumps the token;
-    // the matching TextInput's has-focus binding re-evaluates and takes
-    // keyboard focus. (Slint 1.6 has no imperative focus() on items.)
-    in property <int> focus-line: -1;
-    in property <int> focus-token: 0;
     in property <bool> motion-enabled: true;
+    // Cursor wash geometry, computed by Rust from the row overlay data.
+    in property <length> cursor-y: 0px;
+    in property <length> cursor-h: 0px;
 
-    // True while the wrapping FocusScope holds keyboard focus, i.e. the
-    // fallback typing mode. Drives the synthetic caret below.
-    property <bool> kb-focus: fs.has-focus;
-
-    callback line-edited(int, string);
-    // text, ctrl, shift — dispatched to the global shortcut handler in Rust.
-    callback key-command(string, bool, bool) -> bool;
-    callback line-clicked(int);
+    callback doc-edited(string);
+    callback caret-point(length, length);
     callback checkbox-toggled(int);
-    // line index, glyph-ruler column — from the mouse-driven native caret.
-    callback caret-moved(int, int);
-    // true = indent, false = outdent.
+    callback key-command(string, bool, bool) -> bool;
     callback tab-pressed(bool);
+
+    // Renderer-measured metrics, read by Rust for overlay geometry.
+    out property <length> line-pitch: pitch-ruler.preferred-height / 2;
+    out property <length> char-w: glyph-ruler.preferred-width / 10;
+    out property <length> view-w: scroll.visible-width;
 
     background: AppTheme.editor-bg;
     clip: true;
 
-    /// Scroll the given line into view (top third of the viewport).
-    public function reveal(index: int) {
-        root.reveal-target = index;
-        scroll.viewport-y = max(
-            -(scroll.viewport-height - scroll.visible-height),
-            min(0px, scroll.visible-height / 3 - index * root.estimate-row-height));
-    }
-
-    in-out property <int> reveal-target: -1;
-
     property <length> text-size: root.base-font-size * root.zoom;
-    property <length> line-gap: 3px;
-    property <length> indent-step: 22px;
     property <length> gutter: 10px;
-    property <length> marker-width: 26px;
-    // Best-effort row pitch for reveal(); exact for unwrapped lines.
-    property <length> estimate-row-height: root.text-size * 1.35 + root.line-gap * 2;
 
-    // Glyph ruler: ten digits in the editor font. Exact advance width for the
-    // default Consolas, close otherwise; drives the caret x and the wrap-off
-    // viewport width.
-    ruler := Text {
+    // Two-line ruler: its height / 2 is exactly the renderer's line pitch
+    // for this font (native multi-line spacing, not a guess).
+    pitch-ruler := Text {
+        text: "0\n0";
+        font-family: root.font-family;
+        font-size: root.text-size;
+        wrap: no-wrap;
+        opacity: 0;
+    }
+    glyph-ruler := Text {
         text: "0123456789";
         font-family: root.font-family;
         font-size: root.text-size;
         wrap: no-wrap;
         opacity: 0;
     }
-    property <length> char-w: ruler.preferred-width / 10;
-    // Wrap-off horizontal extent: longest line in glyph widths plus margin
-    // (15 % headroom for non-monospace fallback fonts).
-    property <length> off-width: root.gutter * 2 + root.max-line-len * root.char-w * 1.15;
 
-    // Shortcut layer: keys the focused TextInput rejects bubble up to here.
+    // Shortcut layer: Ctrl chords and Tab that the TextInput ignores bubble
+    // up to here (characters never reach it — the input owns them).
     fs := FocusScope {
         key-pressed(event) => {
-            // Every key is offered to Rust: Ctrl chords become shortcuts,
-            // and when no line TextInput holds focus, plain characters,
-            // Enter and Backspace are applied to the caret line so typing
-            // works no matter where in the editor the user clicked.
             if (event.text == "\u{0009}" && !event.modifiers.control) {
                 root.tab-pressed(!event.modifiers.shift);
                 accept
@@ -110,158 +85,93 @@ export component Editor inherits Rectangle {
         }
 
         scroll := ScrollView {
-            // Wrap on: pin the viewport to the visible width, otherwise one
-            // long line widens the viewport and wrapping never happens.
-            // Wrap off: let the viewport take the content's preferred width
-            // so the hidden tail of long lines stays reachable by scrolling
-            // sideways (the horizontal scrollbar appears automatically).
-            viewport-width: root.wrapping
-                ? self.visible-width
-                : max(self.visible-width, root.off-width);
+            viewport-height: input.preferred-height + root.text-size;
 
-            stack := VerticalLayout {
-                padding: 8px;
-                spacing: 0px;
-                alignment: start;
+            content := Rectangle {
+                // Wrap on: fill the visible width and wrap. Wrap off: grow to
+                // the longest line (glyph-ruler math with 15 % headroom) so
+                // every character is reachable via horizontal scrolling.
+                width: root.wrapping
+                    ? scroll.visible-width
+                    : max(scroll.visible-width, root.gutter + 16px + root.max-line-len * root.char-w * 1.15);
+                height: input.preferred-height + root.text-size;
+                // Cursor-line wash under the text.
+                Rectangle {
+                    y: root.cursor-y;
+                    height: root.cursor-h;
+                    width: 100%;
+                    background: AppTheme.surface.with-alpha(0.35);
+                    animate opacity { duration: root.motion-enabled ? 200ms : 0ms; }
+                }
 
-                for line[i] in root.lines : row := Rectangle {
-                    property <bool> is-current: i == root.cursor-line;
-                    property <bool> has-band: line.colour != LineColour.None;
-                    property <bool> has-match: line.find-match;
-                    property <length> content-x: root.gutter + (line.indent * root.indent-step)
-                        + (line.list-type == ListType.None ? 0px : root.marker-width);
-
-                    // Never collapse below one text line: an EMPTY line's
-                    // measuring Text reports zero height, which made fresh
-                    // Enter lines invisible and Enter look "stuck".
-                    height: max(root.text-size * 1.35, measure.preferred-height)
-                        + (root.line-gap * 2);
-
-                    // ── Highlight band ────────────────────────────────────
-                    // The current find match must be impossible to miss:
-                    // it outranks even a highlight band.
+                // Highlight / find bands under the text.
+                for line[i] in root.lines : Rectangle {
+                    y: line.y-pos;
+                    height: line.band-h;
+                    width: 100%;
                     background: line.find-current
                         ? AppTheme.accent-colour.with-alpha(0.55)
-                        : (row.has-band
+                        : (line.colour != LineColour.None
                             ? line.accent.with-alpha(0.25)
                             : (line.find-match
                                 ? AppTheme.warning-colour.with-alpha(0.30)
-                                : (row.is-current ? AppTheme.surface.with-alpha(0.55) : transparent)));
+                                : transparent));
                     animate background {
                         duration: root.motion-enabled ? 350ms : 0ms;
                         easing: ease-out;
                     }
 
-                    // ── Left accent bar ───────────────────────────────────
+                    // Left accent bar.
                     Rectangle {
                         width: 3px;
                         height: parent.height;
                         border-radius: 2px;
-                        background: row.has-band ? line.accent : transparent;
-                        animate background {
-                            duration: root.motion-enabled ? 350ms : 0ms;
-                            easing: ease-out;
-                        }
+                        background: line.colour != LineColour.None ? line.accent : transparent;
                     }
+                }
 
-                    // Click anywhere on the band to make it the caret line.
-                    // Declared first so the TextInput stays on top and keeps
-                    // its own mouse handling.
-                    TouchArea {
-                        width: parent.width;
-                        height: parent.height;
-                        clicked => { root.line-clicked(i); }
-                    }
-
-                    // ── List marker ───────────────────────────────────────
+                // List markers beside the text column.
+                for line[i] in root.lines : Rectangle {
+                    y: line.y-pos;
+                    height: line.band-h;
+                    x: 0;
+                    width: root.gutter + line.indent * 22px;
                     if line.list-type != ListType.None : ListMarker {
-                        x: root.gutter + (line.indent * root.indent-step);
-                        // Align with the FIRST visual line, not the middle
-                        // of a possibly wrapped row.
-                        y: root.line-gap;
+                        x: root.gutter + (line.indent * 22px);
+                        y: 0;
                         list-type: line.list-type;
                         marker: line.marker;
                         checked: line.checked;
                         toggled => { root.checkbox-toggled(i); }
                     }
+                }
 
-                    // ── Measuring twin (invisible) ────────────────────────
-                    measure := Text {
-                        x: row.content-x;
-                        y: root.line-gap;
-                        width: parent.width - row.content-x - root.gutter;
-                        text: line.text;
-                        font-family: root.font-family;
-                        font-size: root.text-size;
-                        wrap: root.wrap-mode;
-                        opacity: 0;
-                    }
+                // ── The document surface ───────────────────────────────────
+                input := TextInput {
+                    width: 100%;
+                    height: 100%;
+                    x: root.gutter + root.zoom * 16px;
+                    y: 0;
+                    text <=> root.doc-text;
+                    font-family: root.font-family;
+                    font-size: root.text-size;
+                    wrap: root.wrapping ? word-wrap : no-wrap;
+                    single-line: false;
+                    color: AppTheme.editor-text;
+                    selection-background-color: AppTheme.selection-colour;
+                    selection-foreground-color: AppTheme.editor-text;
 
-                    // ── The line's text ───────────────────────────────────
-                    // READ-ONLY by design (the "textarea contract"): the
-                    // input owns mouse caret placement, drag selection and
-                    // native Copy/SelectAll, but never mutates text itself —
-                    // it *ignores* characters, Enter, Backspace and arrows,
-                    // which bubble up to the FocusScope and into the Rust
-                    // engine. Because the `text` binding therefore never
-                    // dies, every edit — Enter included — reconciles in
-                    // place and the focused row keeps focus: typing is
-                    // continuous, exactly like a textarea.
-                    input := TextInput {
-                        x: row.content-x;
-                        y: root.line-gap;
-                        // Rows always stretch to the viewport width (bands
-                        // stay full-bleed); with wrap off the viewport itself
-                        // is widened to the longest line, and `wrap: no-wrap`
-                        // keeps the text on one line inside the wider input.
-                        width: measure.width;
-                        height: measure.preferred-height;
-                        text: line.text;
-                        font-family: root.font-family;
-                        font-size: root.text-size;
-                        wrap: root.wrap-mode;
-                        single-line: false;
-                        read-only: true;
-                        // Always dark on the light bands, themed elsewhere —
-                        // this is the binding that fixes "invisible text on
-                        // dark themes" (bug #3).
-                        color: row.has-band ? AppTheme.editor-text-on-highlight : AppTheme.editor-text;
-                        selection-background-color: AppTheme.selection-colour;
-                        // NOTE: Slint 1.6 exposes has-focus as output-only —
-                        // programmatic focus arrives with 1.7's focus(). The
-                        // focus-line/focus-token properties are wired and
-                        // ready for it; today the FocusScope fallback in
-                        // Rust keeps typing alive after focus is lost.
-
-                        // The mouse still moves the native caret on a
-                        // read-only input; convert its pixel offset to a
-                        // column with the glyph ruler and hand it to Rust.
-                        cursor-position-changed(pt) => {
-                            root.caret-moved(i, max(0, Math.round(pt.x / root.char-w)));
-                        }
-                    }
-
-                    // ── The caret ─────────────────────────────────────────
-                    // A read-only TextInput paints no caret of its own, so
-                    // the engine's cursor IS the caret: drawn on the cursor
-                    // line whether the keyboard focus sits on a row input or
-                    // on the fallback FocusScope. The x offset comes from
-                    // the glyph ruler (exact for the Consolas default).
-                    if i == root.cursor-line : Rectangle {
-                        x: row.content-x + root.char-w * root.cursor-col;
-                        y: root.line-gap;
-                        width: 2px;
-                        height: root.text-size * 1.2;
-                        border-radius: 1px;
-                        background: AppTheme.editor-text;
-                        // Square-wave blink: 0→1 forever, 530 ms per phase.
-                        property <float> blink-phase;
-                        blink-phase: 1;
-                        animate blink-phase { duration: 530ms; iteration-count: -1; }
-                        opacity: blink-phase < 0.5 ? 1 : 0;
-                    }
+                    edited => { root.doc-edited(self.text); }
+                    cursor-position-changed(pt) => { root.caret-point(pt.x, pt.y); }
                 }
             }
         }
+    }
+
+    /// Scroll the given pixel y offset into view (top third of the viewport).
+    public function reveal-y(y: length) {
+        scroll.viewport-y = max(
+            -(scroll.viewport-height - scroll.visible-height),
+            min(0px, scroll.visible-height / 3 - y));
     }
 }

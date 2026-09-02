@@ -69,62 +69,29 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
     // ── Editor ────────────────────────────────────────────────────────────
 
     {
+        // The single document surface reports every native edit with the
+        // full text; Rust reconciles it into the line model (metadata is
+        // preserved by index) and pushes back only if a normalisation
+        // (markdown list shortcut, list continuation) changed the text.
         let s = state.clone();
         let w = window.as_weak();
-        window.on_line_edited(move |index: i32, text| {
-            let index = index.max(0) as usize;
-            let (before_lines, before_type) = {
+        window.on_doc_edited(move |text: SharedString| {
+            let Some(win) = w.upgrade() else { return };
+            let (before, caret) = {
                 let guard = lock(&s);
-                (
-                    guard.doc().line_count(),
-                    guard.doc().lines.get(index).map(|l| l.list_type),
-                )
+                (guard.doc().line_count(), guard.cursor)
             };
-            let changed = lock(&s).set_line_text(index, text.as_str());
-            if changed {
-                if let Some(win) = w.upgrade() {
-                    let (after_lines, after_type) = {
-                        let guard = lock(&s);
-                        (
-                            guard.doc().line_count(),
-                            guard.doc().lines.get(index).map(|l| l.list_type),
-                        )
-                    };
-                    if after_lines != before_lines || before_type != after_type {
-                        // A line was split (Enter) or a markdown shortcut
-                        // converted it; the rows have to be rebuilt — and
-                        // the caret must follow, or Enter feels dead.
-                        sync::sync_all(&win, &lock(&s));
-                        let caret = lock(&s).cursor.line;
-                        sync::focus_line(&win, caret);
-                    } else {
-                        // Do NOT rebuild the model here: that would recreate
-                        // the TextInput and drop the caret on every keystroke.
-                        // Push just this row so the model stays equal to the
-                        // document and a later reconcile leaves the row (and
-                        // its focus/caret) alone.
-                        sync::sync_editor_row(&win, &lock(&s), index);
-                        sync::sync_status(&win, &lock(&s));
-                        sync::sync_tabs(&win, &lock(&s));
-                        sync::sync_extract(&win, &lock(&s));
-                    }
+            {
+                let mut guard = lock(&s);
+                guard.apply_full_text(text.as_str());
+                // Native Enter split one line into two: let the list engine
+                // re-split so bullets/numbers/checks continue.
+                if guard.doc().line_count() == before + 1 && caret.line > 0 {
+                    let l = caret.line.min(guard.doc().line_count() - 1);
+                    guard.continue_list_after_enter(l);
                 }
             }
-        });
-    }
-
-    {
-        let s = state.clone();
-        let w = window.as_weak();
-        window.on_line_clicked(move |index: i32| {
-            let mut guard = lock(&s);
-            guard.cursor.line = index.max(0) as usize;
-            guard.clamp_cursor();
-            guard.anchor = None;
-            drop(guard);
-            if let Some(win) = w.upgrade() {
-                sync::sync_status(&win, &lock(&s));
-            }
+            sync::sync_all(&win, &lock(&s));
         });
     }
 
@@ -142,25 +109,33 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
     {
         let s = state.clone();
         let w = window.as_weak();
-        // Mouse-driven caret: the read-only row's TextInput reports where the
-        // native caret landed (glyph-ruler column); the Rust engine adopts it
-        // so keyboard edits continue from the clicked position.
-        window.on_caret_moved(move |index: i32, col: i32| {
+        // The native caret reports its pixel position; map it back to
+        // (line, col) with the renderer-measured overlay geometry and the
+        // glyph ruler so the status bar and keyboard edits agree with the
+        // mouse.
+        window.on_caret_point(move |x: f32, y: f32| {
+            let Some(win) = w.upgrade() else { return };
+            let geom = sync::compute_geom(&win, &lock(&s));
+            let char_w = win.get_editor_char_w().max(0.1);
+            let mut line = geom.len().saturating_sub(1);
+            for (i, g) in geom.iter().enumerate() {
+                if y >= g.0 && y < g.0 + g.1 {
+                    line = i;
+                    break;
+                }
+            }
             {
                 let mut st = lock(&s);
-                let line = (index.max(0) as usize).min(st.doc().lines.len().saturating_sub(1));
+                st.cursor.line = line;
                 let len = st
                     .doc()
                     .lines
                     .get(line)
                     .map(|l| l.text.chars().count())
                     .unwrap_or(0);
-                st.cursor.line = line;
-                st.cursor.col = (col.max(0) as usize).min(len);
+                st.cursor.col = ((x / char_w).round().max(0.0) as usize).min(len);
             }
-            if let Some(win) = w.upgrade() {
-                sync::sync_status(&win, &lock(&s));
-            }
+            sync::sync_status(&win, &lock(&s));
         });
     }
 
