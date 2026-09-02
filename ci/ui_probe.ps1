@@ -14,11 +14,14 @@ Add-Type -AssemblyName System.Drawing
 $sample = "PROBE-ALPHA the quick brown fox jumps over the lazy dog 0123456789`nPROBE-BRAVO second line of the pixel probe`nPROBE-CHARLIE third line`n"
 Set-Content -Path "probe.txt" -Value $sample
 
-# For the wrap-off probe, seed the settings file before first launch.
+# Seed the settings file before first launch: dark theme like the user's
+# environment, word wrap per tag.
+$cfgDir = Join-Path $env:APPDATA "NotePadPro"
+New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
 if ($Tag -eq "wrap-off") {
-    $cfgDir = Join-Path $env:APPDATA "NotePadPro"
-    New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
-    Set-Content -Path (Join-Path $cfgDir "settings.json") -Value '{"wordWrap": false}'
+    Set-Content -Path (Join-Path $cfgDir "settings.json") -Value '{"theme": "dark", "wordWrap": false}'
+} else {
+    Set-Content -Path (Join-Path $cfgDir "settings.json") -Value '{"theme": "dark", "wordWrap": true}'
 }
 
 $exe = ".\target\release\notepadpro.exe"
