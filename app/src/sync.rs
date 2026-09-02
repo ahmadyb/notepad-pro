@@ -35,10 +35,16 @@ pub fn sync_tabs(window: &AppWindow, state: &AppState) {
 
 pub fn sync_editor(window: &AppWindow, state: &AppState) {
     let doc = state.doc();
-    update_lines(
-        window,
-        convert::lines_vec(&doc.lines, &state.palette, state.cursor.line, &state.find),
-    );
+    let fresh = convert::lines_vec(&doc.lines, &state.palette, state.cursor.line, &state.find);
+    // Longest line (in chars) drives the wrap-off horizontal viewport.
+    let max_len = doc
+        .lines
+        .iter()
+        .map(|l| l.text.chars().count())
+        .max()
+        .unwrap_or(0);
+    window.set_max_line_len(max_len as i32);
+    update_lines(window, fresh);
     window.set_cursor_line(state.cursor.line as i32);
     window.set_cursor_col(state.cursor.col as i32);
     window.set_document_empty(doc.is_empty());

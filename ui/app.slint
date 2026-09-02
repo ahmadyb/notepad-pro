@@ -69,6 +69,8 @@ export component AppWindow inherits Window {
     in-out property <[TabData]> tabs;
     in-out property <int> active-tab: 0;
     in-out property <[EditorLineData]> lines;
+    // Character count of the longest document line (wrap-off viewport size).
+    in-out property <int> max-line-len: 0;
     in-out property <bool> document-empty: true;
     // Programmatic editor focus: Rust sets the row and bumps the token.
     in-out property <int> editor-focus-line: -1;
@@ -433,6 +435,7 @@ export component AppWindow inherits Window {
 
                 editor := Editor {
                     lines: root.lines;
+                    max-line-len: root.max-line-len;
                     cursor-line: root.cursor-line;
                     cursor-col: root.cursor-col;
                     zoom: root.zoom;

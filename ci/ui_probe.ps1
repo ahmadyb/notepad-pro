@@ -10,9 +10,13 @@ $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# Sample document: lines that must be visible in the editor.
-$sample = "PROBE-ALPHA the quick brown fox jumps over the lazy dog 0123456789`nPROBE-BRAVO second line of the pixel probe`nPROBE-CHARLIE third line`n"
-Set-Content -Path "probe.txt" -Value $sample
+# Sample document: >1000 short morse-style lines like the user's file, so
+# large-repeater behaviour is probed too.
+$lines = @()
+for ($n = 0; $n -lt 1100; $n++) {
+    $lines += "PROBE-$n .- -... -.-. -- --- .-. ..-. . -.-"
+}
+Set-Content -Path "probe.txt" -Value ($lines -join "`n")
 
 # Seed the settings file before first launch: dark theme like the user's
 # environment, word wrap per tag.

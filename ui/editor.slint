@@ -25,6 +25,10 @@ export component Editor inherits Rectangle {
     in property <int> cursor-col: 0;
     in property <float> zoom: 1.0;
     in property <bool> wrapping: true;
+    // Character count of the longest line; Rust maintains it. With wrap off
+    // it sizes the horizontal viewport (glyph-ruler math, no measuring twins,
+    // no layout feedback loops) so every character stays reachable.
+    in property <int> max-line-len: 0;
     // `word-wrap` is both our bool and a TextWrap enumerator, so map it once.
     property <TextWrap> wrap-mode: root.wrapping ? word-wrap : no-wrap;
     in property <string> font-family: "Consolas";
@@ -73,6 +77,21 @@ export component Editor inherits Rectangle {
     // Best-effort row pitch for reveal(); exact for unwrapped lines.
     property <length> estimate-row-height: root.text-size * 1.35 + root.line-gap * 2;
 
+    // Glyph ruler: ten digits in the editor font. Exact advance width for the
+    // default Consolas, close otherwise; drives the caret x and the wrap-off
+    // viewport width.
+    ruler := Text {
+        text: "0123456789";
+        font-family: root.font-family;
+        font-size: root.text-size;
+        wrap: no-wrap;
+        opacity: 0;
+    }
+    property <length> char-w: ruler.preferred-width / 10;
+    // Wrap-off horizontal extent: longest line in glyph widths plus margin
+    // (15 % headroom for non-monospace fallback fonts).
+    property <length> off-width: root.gutter * 2 + root.max-line-len * root.char-w * 1.15;
+
     // Shortcut layer: keys the focused TextInput rejects bubble up to here.
     fs := FocusScope {
         key-pressed(event) => {
@@ -96,7 +115,9 @@ export component Editor inherits Rectangle {
             // Wrap off: let the viewport take the content's preferred width
             // so the hidden tail of long lines stays reachable by scrolling
             // sideways (the horizontal scrollbar appears automatically).
-            viewport-width: root.wrapping ? self.visible-width : stack.preferred-width;
+            viewport-width: root.wrapping
+                ? self.visible-width
+                : max(self.visible-width, root.off-width);
 
             stack := VerticalLayout {
                 padding: 8px;
@@ -109,16 +130,6 @@ export component Editor inherits Rectangle {
                     property <bool> has-match: line.find-match;
                     property <length> content-x: root.gutter + (line.indent * root.indent-step)
                         + (line.list-type == ListType.None ? 0px : root.marker-width);
-
-                    // Wrap off: the row is exactly as wide as its unwrapped
-                    // text, so the stack's preferred-width (the widest row)
-                    // drives the horizontal viewport and every character
-                    // stays reachable. Wrap on: irrelevant — the viewport is
-                    // pinned to the visible width — and referencing the
-                    // parent here would close a binding loop.
-                    preferred-width: root.wrapping
-                        ? 0px
-                        : row.content-x + intrinsic.preferred-width + root.gutter;
 
                     // Never collapse below one text line: an EMPTY line's
                     // measuring Text reports zero height, which made fresh
@@ -199,10 +210,11 @@ export component Editor inherits Rectangle {
                     input := TextInput {
                         x: row.content-x;
                         y: root.line-gap;
-                        // Wrap on: share the viewport width. Wrap off: be
-                        // exactly as wide as the unwrapped text — never
-                        // collapse to a narrow column (bug m2).
-                        width: root.wrapping ? measure.width : intrinsic.preferred-width;
+                        // Rows always stretch to the viewport width (bands
+                        // stay full-bleed); with wrap off the viewport itself
+                        // is widened to the longest line, and `wrap: no-wrap`
+                        // keeps the text on one line inside the wider input.
+                        width: measure.width;
                         height: measure.preferred-height;
                         text: line.text;
                         font-family: root.font-family;
@@ -225,21 +237,8 @@ export component Editor inherits Rectangle {
                         // read-only input; convert its pixel offset to a
                         // column with the glyph ruler and hand it to Rust.
                         cursor-position-changed(pt) => {
-                            root.caret-moved(i, max(0, Math.round(pt.x / (caret-twin.preferred-width / 10))));
+                            root.caret-moved(i, max(0, Math.round(pt.x / root.char-w)));
                         }
-                    }
-
-                    // Unwrapped measuring twin: the row's true text width
-                    // when wrapping is off (drives input.width and, via the
-                    // row's preferred-width, the horizontal viewport).
-                    intrinsic := Text {
-                        x: row.content-x;
-                        y: root.line-gap;
-                        text: line.text;
-                        font-family: root.font-family;
-                        font-size: root.text-size;
-                        wrap: no-wrap;
-                        opacity: 0;
                     }
 
                     // ── The caret ─────────────────────────────────────────
@@ -247,17 +246,9 @@ export component Editor inherits Rectangle {
                     // the engine's cursor IS the caret: drawn on the cursor
                     // line whether the keyboard focus sits on a row input or
                     // on the fallback FocusScope. The x offset comes from
-                    // the monospace advance width (exact for Consolas).
-                    caret-twin := Text {
-                        text: "0123456789";
-                        font-family: root.font-family;
-                        font-size: root.text-size;
-                        wrap: no-wrap;
-                        opacity: 0;
-                    }
-
+                    // the glyph ruler (exact for the Consolas default).
                     if i == root.cursor-line : Rectangle {
-                        x: row.content-x + (caret-twin.preferred-width / 10) * root.cursor-col;
+                        x: row.content-x + root.char-w * root.cursor-col;
                         y: root.line-gap;
                         width: 2px;
                         height: root.text-size * 1.2;
