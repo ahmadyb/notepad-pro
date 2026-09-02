@@ -40,16 +40,19 @@
     </Feature>
 
     <Directory Id="TARGETDIR" Name="SourceDir">
-      <Directory Id="ProgramFilesFolder">
+      <!-- candle runs with -arch x64, which defaults components to Win64=yes;
+           they must therefore live under the 64-bit Program Files folder or
+           light fails ICE80 (64BitComponent uses 32BitDirectory). -->
+      <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLFOLDER" Name="NotePadPro">
-          <Component Id="ApplicationExecutable" Guid="*">
+          <Component Id="ApplicationExecutable" Guid="*" Win64="yes">
             <File Id="ApplicationExecutableFile"
                   Name="notepadpro.exe"
                   Source="target\release\notepadpro.exe"
                   KeyPath="yes" />
           </Component>
 
-          <Component Id="TxtAssociation" Guid="*">
+          <Component Id="TxtAssociation" Guid="*" Win64="yes">
             <RegistryValue Root="HKCR" Key=".txt" Name="NotePadPro.Txt" Type="string" Value="" KeyPath="yes" />
             <RegistryValue Root="HKCR" Key="NotePadPro.Txt" Name="" Type="string" Value="Text Document (NotePad Pro)" />
             <RegistryValue Root="HKCR" Key="NotePadPro.Txt\DefaultIcon" Name="" Type="string" Value="[INSTALLFOLDER]notepadpro.exe,0" />
