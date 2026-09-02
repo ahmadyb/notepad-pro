@@ -50,6 +50,22 @@ jobs:
       - name: Smoke-check the binary
         run: ./target/release/notepadpro.exe --help
 
+      - name: UI pixel probe (wrap on)
+        shell: pwsh
+        run: pwsh -File ci/ui_probe.ps1 wrap-on
+
+      - name: UI pixel probe (wrap off)
+        shell: pwsh
+        run: pwsh -File ci/ui_probe.ps1 wrap-off
+
+      - name: Upload UI probe screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-probe
+          path: ui_probe_*.png
+          if-no-files-found: ignore
+
       - name: Build MSI installer (WiX 3.11)
         shell: pwsh
         run: |
