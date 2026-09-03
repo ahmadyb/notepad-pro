@@ -77,41 +77,7 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
         let w = window.as_weak();
         window.on_doc_edited(move |text: SharedString| {
             let Some(win) = w.upgrade() else { return };
-            let (old_texts, caret_hint) = {
-                let guard = lock(&s);
-                (
-                    guard.doc().lines.iter().map(|l| l.text.clone()).collect::<Vec<_>>(),
-                    guard.cursor.line,
-                )
-            };
-            let new_texts: Vec<String> = text
-                .as_str()
-                .split('\n')
-                .map(|l| l.trim_end_matches('\r').to_string())
-                .collect();
-            // Locate the Enter split from the text itself. The pixel-mapped
-            // caret lags the native edit, and using it here joined the wrong
-            // pair of lines — the "Enter rewrites my line / typing runs
-            // backwards" corruption.
-            let split = detect_enter_split(&old_texts, &new_texts, caret_hint);
-            {
-                let mut guard = lock(&s);
-                guard.apply_full_text(text.as_str());
-                if let Some(i) = split {
-                    guard.continue_list_after_split(i);
-                    let last = guard.doc().line_count().saturating_sub(1);
-                    guard.cursor.line = (i + 1).min(last);
-                    guard.cursor.col = 0;
-                }
-            }
-            sync::sync_all(&win, &lock(&s));
-            // Assigning `text` resets the native caret to offset 0. If the
-            // reconciliation rewrote the surface (markdown shortcut folded
-            // into a list marker, list continuation) put the caret back where
-            // the user was, otherwise typing continues at the top of the file.
-            if let Some(offset) = caret_restore_offset(&lock(&s), text.as_str(), split) {
-                win.invoke_place_caret(offset as i32);
-            }
+            apply_surface_text(&win, &s, text.as_str());
         });
     }
 
@@ -656,6 +622,45 @@ pub fn press_enter(window: &AppWindow, state: &SharedState) {
     sync::sync_all(window, &lock(state));
     if let EnterOutcome::MoveTo(index) = outcome {
         sync::reveal_line(window, index);
+    }
+}
+
+/// Reconcile a full-text edit arriving from whichever surface owns the
+/// keyboard (the Slint `TextInput`, or the Win32 Rich Edit child in
+/// `native_edit`). Shared so both surfaces get identical Enter/undo/list
+/// behaviour.
+pub fn apply_surface_text(window: &AppWindow, s: &SharedState, text: &str) {
+    let (old_texts, caret_hint) = {
+        let guard = lock(s);
+        (
+            guard.doc().lines.iter().map(|l| l.text.clone()).collect::<Vec<_>>(),
+            guard.cursor.line,
+        )
+    };
+    let new_texts: Vec<String> = text
+        .split('\n')
+        .map(|l| l.trim_end_matches('\r').to_string())
+        .collect();
+    // Locate the Enter split from the text itself. The pixel-mapped caret
+    // lags the native edit, and using it here joined the wrong pair of
+    // lines — the "Enter rewrites my line / typing runs backwards" bug.
+    let split = detect_enter_split(&old_texts, &new_texts, caret_hint);
+    {
+        let mut guard = lock(s);
+        guard.apply_full_text(text);
+        if let Some(i) = split {
+            guard.continue_list_after_split(i);
+            let last = guard.doc().line_count().saturating_sub(1);
+            guard.cursor.line = (i + 1).min(last);
+            guard.cursor.col = 0;
+        }
+    }
+    sync::sync_all(window, &lock(s));
+    // Assigning `text` resets the Slint caret to offset 0. If the
+    // reconciliation rewrote the surface (markdown shortcut folded into a
+    // list marker) put the caret back where the user was.
+    if let Some(offset) = caret_restore_offset(&lock(s), text, split) {
+        window.invoke_place_caret(offset as i32);
     }
 }
 

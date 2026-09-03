@@ -92,6 +92,9 @@ export component AppWindow inherits Window {
     in-out property <bool> animations: true;
     in-out property <float> blob-phase: 0.0;
     in-out property <string> theme: "light";
+    // True once the Win32 Rich Edit child has been parented over the editor
+    // region; the Slint surface then hides (it stays as the fallback).
+    in-out property <bool> native-editor: false;
     in-out property <bool> native-frame: true;
 
     in-out property <bool> sidebar-open: false;
@@ -288,6 +291,18 @@ export component AppWindow inherits Window {
     // Renderer-measured editor metrics, read by Rust for the overlay
     // geometry (band y offsets, caret line/col from pixel points).
     line-pitch: editor.line-pitch;
+
+    // Window-space geometry of the editor region, read by the Win32 Rich
+    // Edit embedding so the native child sits exactly over this area. The
+    // layout is a strict stack (titlebar + toolbar + border, sidebar, editor,
+    // statusbar) so the rect follows from the shared tokens.
+    out property <length> editor-gx: root.sidebar-open ? AppTheme.sidebar-width : 0px;
+    out property <length> editor-gy:
+        AppTheme.titlebar-height + AppTheme.toolbar-height + 1px;
+    out property <length> editor-gw:
+        root.width - (root.sidebar-open ? AppTheme.sidebar-width : 0px);
+    out property <length> editor-gh:
+        root.height - editor-gy - AppTheme.statusbar-height;
     editor-char-w: editor.char-w;
     editor-view-w: editor.view-w;
 
@@ -445,6 +460,7 @@ export component AppWindow inherits Window {
                 editor := Editor {
                     width: 100%;
                     height: 100%;
+                    visible: !root.native-editor;
                     lines: root.lines;
                     max-line-len: root.max-line-len;
                     doc-text <=> root.doc-text;

@@ -54,6 +54,17 @@ spec while adapting to the Rust + Slint target.
     parsing `ui/app.slint` for metrics/wiring and by exercising the
     window-free state layer the callbacks delegate to. UI behaviour beyond
     that is covered by the state-layer suites.
+11. **On Windows the editor surface is a native Win32 Rich Edit control
+    (RICHEDIT50W) parented inside the Slint window**, per the user's explicit
+    direction to embed the native control. Rust remains the source of truth:
+    `EN_CHANGE`/`EN_SELCHANGE` are intercepted through window subclassing and
+    reconciled with the line model via the same `apply_surface_text` path the
+    Slint surface uses; highlights and bullet/number formatting are applied
+    with `EM_SETCHARFORMAT`/`EM_SETPARAFORMAT`. The pure-Slint `TextInput`
+    surface stays compiled in and is the automatic fallback whenever the
+    attach fails (and is the only surface on non-Windows builds), so the
+    no-WebView constraint still holds — Rich Edit is a native text control,
+    not a browser engine.
 
 ## Known limitations (documented, not requirements)
 

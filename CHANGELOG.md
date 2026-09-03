@@ -64,6 +64,11 @@ reported bugs are fixed.
   artwork.
 - New unit tests for split detection, caret restoration and list
   continuation; integration suite is now 154 checks (theme suite 37 → 22).
+- **Native editor surface (user direction):** on Windows the document now
+  lives in a Win32 Rich Edit control (RICHEDIT50W, the WordPad engine)
+  parented inside the Slint window — real scrollbars, native caret/selection/
+  clipboard/undo — with highlights and bullet/number formatting applied from
+  Rust. The pure-Slint `TextInput` surface remains as the automatic fallback.
 
 ### Fixed (editor & shell pass, 2026-09-02)
 - Editor is now a true textarea: rows are read-only `TextInput`s that own

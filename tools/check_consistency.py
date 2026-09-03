@@ -145,6 +145,8 @@ def main() -> int:
         if u not in {
             "minimized", "maximized", "title", "text", "query", "replacement",
             "pinned", "file_name", "line_text", "list_type", "row_data",
+            # std OnceLock API, not a window property.
+            "or_init",
         }
     }
     for prop in sorted(window_like - root_props):

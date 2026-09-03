@@ -131,6 +131,10 @@ fn main() -> Result<()> {
         sync::focus_line(&window, caret);
     }
 
+    // Native editor surface: parent a Win32 Rich Edit control over the
+    // editor region (the Slint surface stays as fallback / overlay owner).
+    notepad_pro::native_edit::start_attach(&window, &state);
+
     tracing::info!(
         "{} {} starting",
         notepad_pro_core::APP_NAME,
