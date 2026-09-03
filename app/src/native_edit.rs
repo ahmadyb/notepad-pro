@@ -36,7 +36,7 @@ mod imp {
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM, LRESULT, TRUE, WPARAM};
     use windows::Win32::System::LibraryLoader::{GetModuleHandleW, LoadLibraryW};
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VIRTUAL_KEY};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, SetFocus, VIRTUAL_KEY};
     use windows::Win32::UI::WindowsAndMessaging::*;
 
     /// `NMHDR` declared locally: the notification header of `WM_NOTIFY`.
@@ -515,7 +515,7 @@ mod imp {
             let end = off + rl.encode_utf16().count() as i32;
             let Some(line) = state.doc().lines.get(i) else { break };
             // Highlight band colour.
-            if line.colour.is_set() {
+            if line.colour.is_highlighted() {
                 let (_, rgba) = state.palette.resolve(line.colour);
                 unsafe {
                     select_range(edit, off, end.max(off));
