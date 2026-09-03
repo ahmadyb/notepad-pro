@@ -34,10 +34,17 @@ mod imp {
     use std::sync::{Mutex, OnceLock};
 
     use windows::core::{w, PCWSTR};
-    use windows::Win32::Foundation::{BOOL, HWND, LPARAM, LRESULT, NMHDR, TRUE, WPARAM};
+    use windows::Win32::Foundation::{BOOL, HWND, LPARAM, LRESULT, TRUE, WPARAM};
     use windows::Win32::System::LibraryLoader::LoadLibraryW;
-    use windows::Win32::UI::Controls::{DefSubclassProc, SetWindowSubclass, SUBCLASSPROC};
     use windows::Win32::UI::WindowsAndMessaging::*;
+
+    /// `NMHDR` declared locally: the notification header of `WM_NOTIFY`.
+    #[repr(C)]
+    struct Nmhdr {
+        hwnd_from: usize,
+        id_from: usize,
+        code: isize,
+    }
 
     use crate::callbacks::window_cb;
     use crate::callbacks::{lock, SharedState};
@@ -73,6 +80,9 @@ mod imp {
 
     const EN_CHANGE: u32 = 0x0300;
     const EN_SELCHANGE: isize = 0x0700;
+    const VK_SHIFT: u16 = 0x10;
+    const VK_CONTROL: u16 = 0x11;
+    const VK_TAB: u16 = 0x09;
     const ENM_CHANGE: isize = 0x0001;
     const ENM_SELCHANGE: isize = 0x0008;
 
@@ -144,6 +154,10 @@ mod imp {
     }
 
     static NATIVE: OnceLock<Mutex<Option<Native>>> = OnceLock::new();
+    static OLD_PARENT_PROC: std::sync::atomic::AtomicIsize =
+        std::sync::atomic::AtomicIsize::new(0);
+    static OLD_EDIT_PROC: std::sync::atomic::AtomicIsize =
+        std::sync::atomic::AtomicIsize::new(0);
     static PENDING_EDIT: AtomicBool = AtomicBool::new(false);
     static PENDING_SEL: AtomicBool = AtomicBool::new(false);
     static SUPPRESS: AtomicBool = AtomicBool::new(false);
@@ -195,8 +209,6 @@ mod imp {
         msg: u32,
         wparam: WPARAM,
         lparam: LPARAM,
-        _id: usize,
-        _data: usize,
     ) -> LRESULT {
         match msg {
             WM_COMMAND => {
@@ -205,14 +217,19 @@ mod imp {
                 }
             }
             WM_NOTIFY => {
-                let nm = lparam.0 as *const NMHDR;
+                let nm = lparam.0 as *const Nmhdr;
                 if !nm.is_null() && unsafe { (*nm).code } == EN_SELCHANGE {
                     PENDING_SEL.store(true, Ordering::SeqCst);
                 }
             }
             _ => {}
         }
-        unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+        call_old(OLD_PARENT_PROC.load(Ordering::SeqCst), hwnd, msg, wparam, lparam)
+    }
+
+    fn call_old(prev: isize, hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        let proc: WNDPROC = unsafe { std::mem::transmute(prev) };
+        unsafe { CallWindowProcW(proc, hwnd, msg, wparam, lparam) }
     }
 
     extern "system" fn edit_subclass(
@@ -220,14 +237,12 @@ mod imp {
         msg: u32,
         wparam: WPARAM,
         lparam: LPARAM,
-        _id: usize,
-        _data: usize,
     ) -> LRESULT {
         // Ctrl chords and Tab: route to the app's shortcut table instead of
         // letting Rich Edit swallow them (Ctrl+S, Ctrl+O, Ctrl+Shift+D, ...).
         if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
-            let ctrl_down = unsafe { GetKeyState(VK_CONTROL) } < 0;
-            let shift_down = unsafe { GetKeyState(VK_SHIFT) } < 0;
+            let ctrl_down = unsafe { GetKeyState(VIRTUAL_KEY(VK_CONTROL)) } < 0;
+            let shift_down = unsafe { GetKeyState(VIRTUAL_KEY(VK_SHIFT)) } < 0;
             let vk = VIRTUAL_KEY(wparam.0 as u16);
             if let Some((window, state)) = context_slot().lock().unwrap().clone() {
                 if ctrl_down {
@@ -238,14 +253,14 @@ mod imp {
                             return LRESULT(0);
                         }
                     }
-                } else if vk == VK_TAB {
+                } else if vk == VIRTUAL_KEY(VK_TAB) {
                     lock(&state).indent(!shift_down);
                     sync::sync_all(&window, &lock(&state));
                     return LRESULT(0);
                 }
             }
         }
-        unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+        call_old(OLD_EDIT_PROC.load(Ordering::SeqCst), hwnd, msg, wparam, lparam)
     }
 
     fn vkey_to_char(vk: VIRTUAL_KEY) -> Option<char> {
@@ -297,8 +312,14 @@ mod imp {
                 WPARAM(0),
                 LPARAM(ENM_CHANGE | ENM_SELCHANGE),
             );
-            let _ = SetWindowSubclass(parent, Some(parent_subclass), 1, 0);
-            let _ = SetWindowSubclass(edit, Some(edit_subclass), 2, 0);
+            OLD_PARENT_PROC.store(
+                SetWindowLongPtrW(parent, GWLP_WNDPROC, parent_subclass as usize as isize),
+                Ordering::SeqCst,
+            );
+            OLD_EDIT_PROC.store(
+                SetWindowLongPtrW(edit, GWLP_WNDPROC, edit_subclass as usize as isize),
+                Ordering::SeqCst,
+            );
             let _ = SetFocus(edit);
             *slot().lock().unwrap() = Some(Native {
                 edit,
