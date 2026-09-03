@@ -663,7 +663,7 @@ mod imp {
                     WPARAM(0),
                     LPARAM(&mut cr as *mut _ as isize),
                 );
-                let cp = cr.cp_min.max(0);
+                let cp = cr.cp_min.max(0) as usize;
                 let line = SendMessageW(edit, EM_EXLINEFROMCHAR, WPARAM(0), LPARAM(cp as isize))
                     .0
                     .max(0) as usize;
