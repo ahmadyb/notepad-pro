@@ -33,6 +33,7 @@ mod imp {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Mutex, OnceLock};
 
+    use slint::{ComponentHandle, Weak};
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM, LRESULT, TRUE, WPARAM};
     use windows::Win32::System::LibraryLoader::{GetModuleHandleW, LoadLibraryW};
@@ -168,7 +169,7 @@ mod imp {
     // The subclass procs run on the UI thread; hand them the live handles.
     // `AppWindow` is !Send, so this must be thread-local, not a static.
     thread_local! {
-        static CONTEXT: std::cell::RefCell<Option<(AppWindow, SharedState)>> =
+        static CONTEXT: std::cell::RefCell<Option<(Weak<AppWindow>, SharedState)>> =
             std::cell::RefCell::new(None);
     }
 
@@ -249,7 +250,8 @@ mod imp {
             let vk = VIRTUAL_KEY(wparam.0 as u16);
             let handled = CONTEXT.with(|c| {
                 let b = c.borrow();
-                let (window, state) = b.as_ref()?;
+                let (weak, state) = b.as_ref()?;
+                let window = weak.upgrade()?;
                 if ctrl_down {
                     if let Some(ch) = vkey_to_char(vk) {
                         let text = ch.to_string();
@@ -703,14 +705,15 @@ mod imp {
     }
 
     pub fn start_attach(window: &AppWindow, state: &SharedState) {
-        CONTEXT.with(|c| *c.borrow_mut() = Some((window.clone(), state.clone())));
-        let w = window.clone();
+        CONTEXT.with(|c| *c.borrow_mut() = Some((window.as_weak(), state.clone())));
+        let weak = window.as_weak();
         let s = state.clone();
         let timer = slint::Timer::default();
         timer.start(
             slint::TimerMode::Repeated,
             std::time::Duration::from_millis(100),
             move || {
+                let Some(w) = weak.upgrade() else { return };
                 if !attached() {
                     if try_attach() {
                         w.set_native_editor(true);
