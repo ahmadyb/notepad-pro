@@ -9,7 +9,6 @@ use slint::{ComponentHandle, Model, ModelRc, VecModel};
 use crate::convert;
 use crate::state::AppState;
 use crate::ui::{AppWindow, EditorLineData};
-use notepad_pro_core::types::line::ListType;
 
 /// Everything except the line model. Cheap enough to call after any change.
 pub fn sync_light(window: &AppWindow, state: &AppState) {
@@ -89,24 +88,26 @@ pub fn sync_editor(window: &AppWindow, state: &AppState) {
 
 /// Per-line overlay geometry: `(y, height)` in logical px. The line pitch is
 /// renderer-measured (two-line ruler in the editor); with wrapping on, each
-/// line's visual-line count comes from the glyph ruler's advance width.
+/// line's visual-line count comes from a greedy word-wrap simulation that
+/// mirrors the renderer: tokens pack onto a visual line until the next token
+/// (plus its space) no longer fits, and overlong tokens break mid-word. The
+/// available width is exactly the TextInput's: the content width minus the
+/// input's x inset (`gutter + zoom * 16px` in editor.slint).
 pub fn compute_geom(window: &AppWindow, state: &AppState) -> Vec<(f32, f32)> {
     let pitch = window.get_line_pitch().max(1.0);
     let char_w = window.get_editor_char_w();
     let view_w = window.get_editor_view_w();
     let zoom = state.settings.zoom;
+    let avail_chars = if state.settings.word_wrap && view_w > 1.0 && char_w > 0.1 {
+        ((view_w - input_x(zoom)) / char_w).max(1.0)
+    } else {
+        0.0
+    };
     let mut out = Vec::with_capacity(state.doc().lines.len());
     let mut y = 0.0f32;
     for line in &state.doc().lines {
-        let content_x = (10.0
-            + line.indent as f32 * 22.0
-            + if line.list_type != ListType::None { 26.0 } else { 0.0 })
-            * zoom;
-        let vis = if state.settings.word_wrap && view_w > 1.0 && char_w > 0.1 {
-            let avail = (view_w - content_x - 26.0 * zoom).max(1.0);
-            ((line.text.chars().count() as f32 * char_w) / avail)
-                .ceil()
-                .max(1.0)
+        let vis = if avail_chars > 1.0 {
+            wrapped_visual_lines(&line.text, avail_chars)
         } else {
             1.0
         };
@@ -115,6 +116,109 @@ pub fn compute_geom(window: &AppWindow, state: &AppState) -> Vec<(f32, f32)> {
         y += h;
     }
     out
+}
+
+/// The TextInput's x inset in logical px; must mirror `editor.slint`.
+pub fn input_x(zoom: f32) -> f32 {
+    10.0 + zoom * 16.0
+}
+
+/// Greedy word-wrap visual-line count with a uniform monospace advance.
+///
+/// Mirrors the renderer's `word-wrap`: a token moves to the next visual line
+/// when it no longer fits (spaces are break opportunities and consume one
+/// cell); a token longer than a whole line breaks mid-word.
+pub fn wrapped_visual_lines(text: &str, avail: f32) -> f32 {
+    if avail <= 1.0 {
+        return 1.0;
+    }
+    let mut lines = 1.0f32;
+    let mut used = 0.0f32;
+    for (i, token) in text.split(' ').enumerate() {
+        let mut w = token.chars().count() as f32;
+        if i > 0 && w > 0.0 {
+            // The space is a break opportunity: if space+token do not fit,
+            // the token starts a fresh visual line (without the space).
+            if used > 0.0 && used + 1.0 + w > avail {
+                lines += 1.0;
+                used = 0.0;
+            } else {
+                used += 1.0;
+            }
+        }
+        loop {
+            let rem = avail - used;
+            if w <= rem + 1e-3 {
+                used += w;
+                break;
+            }
+            if used > 1e-3 {
+                // Continuation of an overlong token wraps to a new line.
+                lines += 1.0;
+                used = 0.0;
+            } else {
+                // Token longer than a full line: break mid-word.
+                w -= rem;
+                lines += 1.0;
+                used = 0.0;
+            }
+        }
+    }
+    lines
+}
+
+/// Character column at pixel `x` inside visual row `row_within` of `text`,
+/// using the same greedy packing as [`wrapped_visual_lines`]. Returns the
+/// UTF-8 *character* index (not byte index) into the line.
+pub fn col_at_point(text: &str, avail: f32, row_within: usize, x_chars: f32) -> usize {
+    let mut row = 0usize;
+    let mut row_start = 0usize;
+    let mut used = 0.0f32;
+    let mut chars = 0usize;
+    for (i, token) in text.split(' ').enumerate() {
+        let tw = token.chars().count();
+        if i > 0 && tw > 0 {
+            if used > 0.0 && used + 1.0 + tw as f32 > avail {
+                // The space stays at the (invisible) end of the previous row;
+                // the new visual row starts at the token itself.
+                row += 1;
+                row_start = chars + 1;
+                chars += 1;
+                used = 0.0;
+            } else {
+                used += 1.0;
+                chars += 1; // the space itself
+            }
+        }
+        let mut placed = 0usize;
+        while placed < tw {
+            let rem = (avail - used) as usize;
+            if tw - placed <= rem {
+                used += (tw - placed) as f32;
+                chars += tw - placed;
+                placed = tw;
+            } else if used > 1e-3 {
+                row += 1;
+                row_start = chars;
+                used = 0.0;
+            } else {
+                placed += rem;
+                chars += rem;
+                row += 1;
+                row_start = chars;
+                used = 0.0;
+            }
+        }
+        if row > row_within {
+            break;
+        }
+    }
+    if row < row_within {
+        // x past the last visual row: clamp to the line end.
+        return text.chars().count();
+    }
+    let in_row = x_chars.round().max(0.0) as usize;
+    (row_start + in_row).min(text.chars().count())
 }
 
 /// Reconciles `fresh` against the live row model strictly in place.
@@ -254,4 +358,45 @@ pub fn focus_line(window: &AppWindow, index: usize) {
     window.set_editor_focus_line(index as i32);
     let token = window.get_editor_focus_token();
     window.set_editor_focus_token(token + 1);
+}
+
+#[cfg(test)]
+mod geom_tests {
+    use super::*;
+
+    #[test]
+    fn short_line_is_one_visual_line() {
+        assert_eq!(wrapped_visual_lines("hello world", 80.0), 1.0);
+    }
+
+    #[test]
+    fn words_that_do_not_fit_wrap_to_new_rows() {
+        // avail 10: "abcde abcde abcde" packs one token per visual row.
+        assert_eq!(wrapped_visual_lines("abcde abcde abcde", 10.0), 3.0);
+    }
+
+    #[test]
+    fn exact_fit_stays_on_one_line() {
+        assert_eq!(wrapped_visual_lines("abcde abcde", 11.0), 1.0);
+    }
+
+    #[test]
+    fn overlong_token_breaks_mid_word() {
+        // 10 chars over avail 4 -> rows of 4 + 4 + 2.
+        assert_eq!(wrapped_visual_lines("abcdefghij", 4.0), 3.0);
+    }
+
+    #[test]
+    fn empty_line_is_one_row() {
+        assert_eq!(wrapped_visual_lines("", 80.0), 1.0);
+    }
+
+    #[test]
+    fn col_at_point_maps_second_visual_row_past_the_space() {
+        let text = "abcde abcde abcde";
+        assert_eq!(col_at_point(text, 10.0, 1, 0.0), 6);
+        assert_eq!(col_at_point(text, 10.0, 0, 3.0), 3);
+        // Beyond the last row: clamp to the line end.
+        assert_eq!(col_at_point(text, 10.0, 7, 0.0), text.chars().count());
+    }
 }

@@ -75,6 +75,10 @@ jobs:
         shell: pwsh
         run: pwsh -File ci/ui_probe.ps1 wrap-off
 
+      - name: UI interact probe (Enter hang + wash drift)
+        shell: pwsh
+        run: pwsh -File ci/ui_probe.ps1 interact
+
       - name: Upload UI probe screenshots
         if: always()
         uses: actions/upload-artifact@v4

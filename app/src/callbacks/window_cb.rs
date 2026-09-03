@@ -103,23 +103,38 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
             let Some(win) = w.upgrade() else { return };
             let geom = sync::compute_geom(&win, &lock(&s));
             let char_w = win.get_editor_char_w().max(0.1);
+            let view_w = win.get_editor_view_w();
+            let (zoom, wrap) = {
+                let st = lock(&s);
+                (st.settings.zoom, st.settings.word_wrap)
+            };
             let mut line = geom.len().saturating_sub(1);
+            let mut row_within = 0usize;
+            let pitch = win.get_line_pitch().max(1.0);
             for (i, g) in geom.iter().enumerate() {
                 if y >= g.0 && y < g.0 + g.1 {
                     line = i;
+                    row_within = (((y - g.0) / pitch).floor().max(0.0)) as usize;
                     break;
                 }
             }
             {
                 let mut st = lock(&s);
                 st.cursor.line = line;
-                let len = st
+                let text = st
                     .doc()
                     .lines
                     .get(line)
-                    .map(|l| l.text.chars().count())
-                    .unwrap_or(0);
-                st.cursor.col = ((x / char_w).round().max(0.0) as usize).min(len);
+                    .map(|l| l.text.clone())
+                    .unwrap_or_default();
+                let len = text.chars().count();
+                let x_chars = (x - sync::input_x(zoom)) / char_w;
+                st.cursor.col = if wrap {
+                    let avail = ((view_w - sync::input_x(zoom)) / char_w).max(1.0);
+                    sync::col_at_point(&text, avail, row_within, x_chars)
+                } else {
+                    (x_chars.round().max(0.0) as usize).min(len)
+                };
             }
             sync::sync_status(&win, &lock(&s));
         });

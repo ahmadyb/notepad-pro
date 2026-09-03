@@ -69,6 +69,14 @@ reported bugs are fixed.
   parented inside the Slint window — real scrollbars, native caret/selection/
   clipboard/undo — with highlights and bullet/number formatting applied from
   Rust. The pure-Slint `TextInput` surface remains as the automatic fallback.
+- **Overlay geometry rebuilt to match the renderer.** Highlight bands, list
+  markers and the cursor wash are positioned with a greedy word-wrap
+  simulation that mirrors the TextInput's wrapping (token packing at the
+  exact text width instead of a character-count ceil), and the caret's
+  pixel→(line, col) mapping uses the same packing per visual row. A CI
+  interact probe now clicks a real text row on the Windows runner, asserts
+  the wash lands on it, and presses Enter mid-word asserting the app keeps
+  responding (`WASH-DRIFT` / `ENTER-HANG` annotations on regression).
 - **Rich Edit is opt-in (`--rich-edit` / `nativeEditor: true`).** Real-world
   use showed the embedded child could hang on Enter/paste and stay invisible,
   so the proven pure-Slint surface is the default again; the embedding ships
