@@ -255,13 +255,13 @@ mod imp {
                 if ctrl_down {
                     if let Some(ch) = vkey_to_char(vk) {
                         let text = ch.to_string();
-                        if window_cb::handle_shortcut(window, state, &text, true, shift_down) {
+                        if window_cb::handle_shortcut(&window, state, &text, true, shift_down) {
                             return Some(LRESULT(0));
                         }
                     }
                 } else if vk == VIRTUAL_KEY(VK_TAB) {
                     lock(state).indent(!shift_down);
-                    sync::sync_all(window, &lock(state));
+                    sync::sync_all(&window, &lock(state));
                     return Some(LRESULT(0));
                 }
                 None
