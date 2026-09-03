@@ -59,18 +59,14 @@ jobs:
         run: |
           foreach ($f in @("cargo.log", "cargo-test.log")) {
             if (Test-Path $f) {
-              # Errors first (they own the annotation budget), then test
-              # failures, then the tail; warnings only if nothing else fired.
-              $errLines = Get-Content $f | Select-String -Pattern "^error" -Context 0,8 | Select-Object -First 25
-              $failLines = Get-Content $f | Select-String -Pattern "FAILED|panicked at|test result:" -Context 0,4 | Select-Object -First 20
-              if ($errLines -or $failLines) {
-                ($errLines + $failLines) | ForEach-Object { $_.ToString().Split("\n") | ForEach-Object { Write-Output "::error::$_" } }
-              } else {
-                Get-Content $f | Select-String -Pattern "^warning: unused|-->" -Context 0,4 | Select-Object -First 20 | ForEach-Object { $_.ToString().Split("\n") | ForEach-Object { Write-Output "::error::$_" } }
-              }
-              Get-Content $f | Select-Object -Last 25 | ForEach-Object { Write-Output "::error::TAIL[$f] $_" }
+              # Tail first: it always shows why the step died (the annotation
+              # list has a budget and tails used to be truncated away).
+              Get-Content $f | Select-Object -Last 40 | ForEach-Object { Write-Output "::error::TAIL[$f] $_" }
+              Get-Content $f | Select-String -Pattern "^error" -Context 0,8 | Select-Object -First 25 | ForEach-Object { $_.ToString().Split("\n") | ForEach-Object { Write-Output "::error::$_" } }
+              Get-Content $f | Select-String -Pattern "FAILED|panicked at" -Context 0,4 | Select-Object -First 20 | ForEach-Object { $_.ToString().Split("\n") | ForEach-Object { Write-Output "::error::$_" } }
             }
           }
+          exit 0
 
       - name: Smoke-check the binary
         run: ./target/release/notepadpro.exe --help
