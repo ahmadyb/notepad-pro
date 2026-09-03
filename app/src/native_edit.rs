@@ -146,7 +146,9 @@ mod imp {
     }
 
     struct Native {
-        edit: HWND,
+        /// Raw value of the child `HWND` (kept as `isize` so the static is
+        /// `Send`/`Sync`).
+        edit: isize,
         rect: (i32, i32, i32, i32),
         font_key: (String, i32),
         wrap: Option<bool>,
@@ -242,8 +244,8 @@ mod imp {
         // Ctrl chords and Tab: route to the app's shortcut table instead of
         // letting Rich Edit swallow them (Ctrl+S, Ctrl+O, Ctrl+Shift+D, ...).
         if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
-            let ctrl_down = unsafe { GetKeyState(VIRTUAL_KEY(VK_CONTROL)) } < 0;
-            let shift_down = unsafe { GetKeyState(VIRTUAL_KEY(VK_SHIFT)) } < 0;
+            let ctrl_down = unsafe { GetKeyState(VK_CONTROL as i32) } < 0;
+            let shift_down = unsafe { GetKeyState(VK_SHIFT as i32) } < 0;
             let vk = VIRTUAL_KEY(wparam.0 as u16);
             let handled = CONTEXT.with(|c| {
                 let b = c.borrow();
@@ -328,7 +330,7 @@ mod imp {
             );
             let _ = SetFocus(edit);
             *slot().lock().unwrap() = Some(Native {
-                edit,
+                edit: edit.0 as isize,
                 rect: (0, 0, 0, 0),
                 font_key: (String::new(), 0),
                 wrap: None,
@@ -444,11 +446,12 @@ mod imp {
     }
 
     fn apply_theme_and_font(n: &mut Native, window: &AppWindow, theme: &str) {
+        let edit = HWND(n.edit as *mut _);
         let (bg, fg) = theme_colours(theme);
         unsafe {
             // wParam=1 keeps the current selection colour logic simple: the
             // message sets the control background directly.
-            let _ = SendMessageW(n.edit, EM_SETBKGNDCOLOR, WPARAM(1), LPARAM(bg as isize));
+            let _ = SendMessageW(edit, EM_SETBKGNDCOLOR, WPARAM(1), LPARAM(bg as isize));
             let mut cf = std::mem::zeroed::<CharFormat2W>();
             cf.cb_size = std::mem::size_of::<CharFormat2W>() as u32;
             cf.dw_mask = CFM_COLOR | CFM_BACKCOLOR | CFM_SIZE | CFM_FACE;
@@ -463,7 +466,7 @@ mod imp {
             }
             cf.sz_face_name = wide;
             let _ = SendMessageW(
-                n.edit,
+                edit,
                 EM_SETCHARFORMAT,
                 WPARAM(SCF_ALL),
                 LPARAM(&mut cf as *mut _ as isize),
@@ -489,10 +492,9 @@ mod imp {
         sig
     }
 
-    fn apply_line_styles(n: &Native, state: &crate::AppState) {
+    fn apply_line_styles(edit: HWND, state: &crate::AppState) {
         let rich = rich_lines_from_state(state);
         let (bg, _) = theme_colours(&state.settings.theme);
-        let edit = n.edit;
         // Reset every line's band colour to the background first.
         unsafe {
             let len =
@@ -560,6 +562,7 @@ mod imp {
     fn sync_native(window: &AppWindow, state_lock: &SharedState) {
         let mut guard = slot().lock().unwrap();
         let Some(n) = guard.as_mut() else { return };
+        let edit = HWND(n.edit as *mut _);
         let state = lock(state_lock);
 
         // Geometry: sit exactly over the (hidden) Slint editor.
@@ -572,7 +575,7 @@ mod imp {
         if rect != n.rect && rect.2 > 8 && rect.3 > 8 {
             n.rect = rect;
             unsafe {
-                let _ = MoveWindow(n.edit, rect.0, rect.1, rect.2, rect.3, TRUE);
+                let _ = MoveWindow(edit, rect.0, rect.1, rect.2, rect.3, TRUE);
             }
         }
 
@@ -594,7 +597,7 @@ mod imp {
             n.wrap = Some(wrap);
             unsafe {
                 let _ = SendMessageW(
-                    n.edit,
+                    edit,
                     EM_SETTARGETDEVICE,
                     WPARAM(if wrap { 0 } else { 1 }),
                     LPARAM(0),
@@ -604,26 +607,26 @@ mod imp {
 
         // Text: push only when the model differs from what Rich Edit shows.
         let want = rich_lines_from_state(&state).join("\r\n");
-        let have = get_rich_text(n.edit);
+        let have = get_rich_text(edit);
         if have != want {
             let off = utf16_offset(
                 &rich_lines_from_state(&state),
                 state.cursor.line,
                 state.cursor.col,
             );
-            set_rich_text(n.edit, &want);
+            set_rich_text(edit, &want);
             unsafe {
                 let mut cr = CharRange {
                     cp_min: off,
                     cp_max: off,
                 };
                 let _ = SendMessageW(
-                    n.edit,
+                    edit,
                     EM_EXSETSEL,
                     WPARAM(0),
                     LPARAM(&mut cr as *mut _ as isize),
                 );
-                let _ = SendMessageW(n.edit, EM_SCROLLCARET, WPARAM(0), LPARAM(0));
+                let _ = SendMessageW(edit, EM_SCROLLCARET, WPARAM(0), LPARAM(0));
             }
         }
 
@@ -631,7 +634,7 @@ mod imp {
         let sig = style_signature(&state);
         if sig != n.style_sig {
             n.style_sig = sig;
-            apply_line_styles(n, &state);
+            apply_line_styles(edit, &state);
         }
     }
 
@@ -639,7 +642,7 @@ mod imp {
         let text = {
             let guard = slot().lock().unwrap();
             let Some(n) = guard.as_ref() else { return };
-            get_rich_text(n.edit)
+            get_rich_text(HWND(n.edit as *mut _))
         };
         let model = model_text_from_rich(&text);
         window_cb::apply_surface_text(window, state, &model);
@@ -649,23 +652,24 @@ mod imp {
         let (line, col16) = {
             let guard = slot().lock().unwrap();
             let Some(n) = guard.as_ref() else { return };
+            let edit = HWND(n.edit as *mut _);
             unsafe {
                 let mut cr = CharRange {
                     cp_min: 0,
                     cp_max: 0,
                 };
                 let _ = SendMessageW(
-                    n.edit,
+                    edit,
                     EM_EXGETSEL,
                     WPARAM(0),
                     LPARAM(&mut cr as *mut _ as isize),
                 );
                 let cp = cr.cp_min.max(0);
-                let line = SendMessageW(n.edit, EM_EXLINEFROMCHAR, WPARAM(0), LPARAM(cp as isize))
+                let line = SendMessageW(edit, EM_EXLINEFROMCHAR, WPARAM(0), LPARAM(cp as isize))
                     .0
                     .max(0) as usize;
                 let idx =
-                    SendMessageW(n.edit, EM_LINEINDEX, WPARAM(line), LPARAM(0)).0.max(0) as usize;
+                    SendMessageW(edit, EM_LINEINDEX, WPARAM(line), LPARAM(0)).0.max(0) as usize;
                 (line, cp.saturating_sub(idx))
             }
         };
