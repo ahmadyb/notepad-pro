@@ -15,19 +15,11 @@ pub const BUILTIN: &[(&str, &str, u32)] = &[
     ("purple", "#d5b3ff", 0xd5b3_ffff),
 ];
 
-/// The seven themes, in menu order.
-pub const THEMES: &[&str] = &[
-    "light",
-    "dark",
-    "glass-dark",
-    "clay-light",
-    "clay-dark",
-    "neu-light",
-    "neu-dark",
-];
+/// The two themes, in menu order.
+pub const THEMES: &[&str] = &["light", "dark"];
 
 /// Light-family themes, used by the Ctrl+Shift+D "dark twin" toggle.
-pub const LIGHT_THEMES: &[&str] = &["light", "clay-light", "neu-light"];
+pub const LIGHT_THEMES: &[&str] = &["light"];
 
 /// Alpha applied to the full-width highlight band behind a line.
 pub const BAND_ALPHA: f32 = 0.25;
@@ -44,11 +36,6 @@ pub fn dark_twin(current: &str) -> &'static str {
     match current {
         "light" => "dark",
         "dark" => "light",
-        "glass-dark" => "light",
-        "clay-light" => "clay-dark",
-        "clay-dark" => "clay-light",
-        "neu-light" => "neu-dark",
-        "neu-dark" => "neu-light",
         _ => "dark",
     }
 }
@@ -374,12 +361,13 @@ mod tests {
     }
 
     #[test]
-    fn theme_list_has_seven_entries() {
-        assert_eq!(THEMES.len(), 7);
+    fn theme_list_has_light_and_dark() {
+        assert_eq!(THEMES, &["light", "dark"]);
         for theme in THEMES {
             assert!(is_known_theme(theme));
         }
         assert!(!is_known_theme("solarised"));
+        assert!(!is_known_theme("clay-dark"), "removed themes are not known");
     }
 
     #[test]
@@ -395,18 +383,11 @@ mod tests {
     #[test]
     fn dark_twin_of_a_dark_theme_is_its_light_partner() {
         assert_eq!(dark_twin("dark"), "light");
-        assert_eq!(dark_twin("clay-dark"), "clay-light");
-        assert_eq!(dark_twin("neu-dark"), "neu-light");
     }
 
     #[test]
     fn dark_twin_of_an_unknown_theme_is_dark() {
         assert_eq!(dark_twin("nonsense"), "dark");
-    }
-
-    #[test]
-    fn glass_dark_returns_to_light() {
-        assert_eq!(dark_twin("glass-dark"), "light");
     }
 
     #[test]

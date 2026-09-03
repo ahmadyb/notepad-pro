@@ -3,9 +3,9 @@
 // The root window. Three things live here:
 //
 //   1. The 29-method Rust <-> Slint API (see the API section below).
-//   2. The seven theme entry points, implemented as `public function`s
-//      because they run Slint-side and are *called by* Rust. A Slint
-//      `callback` would be the wrong direction.
+//   2. The theme entry points (light + dark), implemented as `public
+//      function`s because they run Slint-side and are *called by* Rust.
+//      A Slint `callback` would be the wrong direction.
 //   3. The layout, which wires the panels to those callbacks.
 //
 // Nothing in this file does arithmetic on strings: every label the UI shows
@@ -14,11 +14,6 @@
 import { AppTheme } from "themes/tokens.slint";
 import { LightTheme } from "themes/light.slint";
 import { DarkTheme } from "themes/dark.slint";
-import { GlassDarkTheme } from "themes/glass_dark.slint";
-import { ClayLightTheme } from "themes/clay_light.slint";
-import { ClayDarkTheme } from "themes/clay_dark.slint";
-import { NeuLightTheme } from "themes/neu_light.slint";
-import { NeuDarkTheme } from "themes/neu_dark.slint";
 
 import { LiquidBackground, Toast } from "animations.slint";
 import { Editor } from "editor.slint";
@@ -263,13 +258,8 @@ export component AppWindow inherits Window {
     //  PUBLIC FUNCTIONS — Rust calls these (Slint implements them)
     // ════════════════════════════════════════════════════════════════════
 
-    public function apply-light-theme()      { LightTheme.apply(); }
-    public function apply-dark-theme()       { DarkTheme.apply(); }
-    public function apply-glass-dark-theme() { GlassDarkTheme.apply(); }
-    public function apply-clay-light-theme() { ClayLightTheme.apply(); }
-    public function apply-clay-dark-theme()  { ClayDarkTheme.apply(); }
-    public function apply-neu-light-theme()  { NeuLightTheme.apply(); }
-    public function apply-neu-dark-theme()   { NeuDarkTheme.apply(); }
+    public function apply-light-theme() { LightTheme.apply(); }
+    public function apply-dark-theme()  { DarkTheme.apply(); }
 
     public function show-toast(message: string) {
         root.toast-message = message;
@@ -288,6 +278,11 @@ export component AppWindow inherits Window {
 
     public function reveal-line(index: int) {
         editor.reveal-y(root.cursor-y);
+    }
+
+    /// Move the native caret to a UTF-8 byte offset (see Editor.place-caret).
+    public function place-caret(offset: int) {
+        editor.place-caret(offset);
     }
 
     // Renderer-measured editor metrics, read by Rust for the overlay
@@ -382,8 +377,7 @@ export component AppWindow inherits Window {
             // Above the body so the (unclipped) theme dropdown can overlap it.
             z: 20;
             palette: root.palette;
-            themes: ["light", "dark", "glass-dark", "clay-light",
-                     "clay-dark", "neu-light", "neu-dark"];
+            themes: ["light", "dark"];
             theme: root.theme;
             sidebar-open: root.sidebar-open;
             find-open: root.find-open;

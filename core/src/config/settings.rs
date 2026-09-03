@@ -336,7 +336,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         let mut s = Settings::default();
-        s.theme = "clay-dark".into();
+        s.theme = "dark".into();
         s.remember_file("/tmp/a.txt");
         s.add_custom_colour(CustomColour::new("Sunset", "#ff8800"));
         s.save(&path).unwrap();

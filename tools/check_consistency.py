@@ -10,7 +10,7 @@ the contracts that bind the shipped files together:
      ``app/src`` via ``invoke_f(``.
   3. Every ``AppTheme.<prop>`` written by a theme file is declared in
      ``ui/themes/tokens.slint``.
-  4. Every token declared in ``tokens.slint`` is written by **all seven** theme
+  4. Every token declared in ``tokens.slint`` is written by **both** theme
      files.
   5. Every ``import`` / relative ``.slint`` reference resolves to a real file.
   6. The ``set_*`` / ``get_*`` property accessors used in Rust map to properties
@@ -35,11 +35,6 @@ THEMES = UI / "themes"
 THEME_FILES = [
     "light.slint",
     "dark.slint",
-    "glass_dark.slint",
-    "clay_light.slint",
-    "clay_dark.slint",
-    "neu_light.slint",
-    "neu_dark.slint",
 ]
 
 BUILTIN_COLOURS = {
@@ -106,7 +101,7 @@ def main() -> int:
                 f"{theme} writes undeclared tokens: {sorted(undeclared)}"
             )
 
-    # ── 4. every colour token set by all seven themes ────────────────────
+    # ── 4. every colour token set by both themes ─────────────────────────
     all_written = set.intersection(*theme_writes.values())
     missing_any = colour_tokens - all_written
     if missing_any:
@@ -174,7 +169,7 @@ def main() -> int:
 
     suites = {
         "e2e_test.rs": 83,
-        "theme_test.rs": 37,
+        "theme_test.rs": 22,
         "window_controls_test.rs": 28,
         "packaging_test.rs": 16,
         "api_safety_test.rs": 5,

@@ -1,19 +1,18 @@
-//! Theme verification over the shipped `.slint` files (37 checks).
+//! Theme verification over the shipped `.slint` files (22 checks).
 //!
 //! These parse the theme sources at test time, so they hold the token store
-//! and the seven themes to the same contract `tools/check_consistency.py`
+//! and the two themes to the same contract `tools/check_consistency.py`
 //! lints: every colour token present in every theme, sensible contrast, and a
 //! dark editor-text-on-highlight everywhere (the original invisible-text bug).
+//!
+//! The theme set was reduced to light + dark on request, so this suite also
+//! guards that the five removed themes really are gone — a stale theme file
+//! would silently ship a picker entry the token store no longer supports.
 
-const THEMES: [&str; 7] = [
-    "light",
-    "dark",
-    "glass_dark",
-    "clay_light",
-    "clay_dark",
-    "neu_light",
-    "neu_dark",
-];
+const THEMES: [&str; 2] = ["light", "dark"];
+
+/// Themes removed from the product. Their files must not come back.
+const REMOVED: [&str; 5] = ["glass_dark", "clay_light", "clay_dark", "neu_light", "neu_dark"];
 
 fn theme_path(name: &str) -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -101,11 +100,31 @@ fn contrast(a: (u8, u8, u8, f32), b: (u8, u8, u8, f32)) -> f32 {
     (hi + 0.05) / (lo + 0.05)
 }
 
+fn tokens_source() -> String {
+    std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("ui")
+            .join("themes")
+            .join("tokens.slint"),
+    )
+    .unwrap()
+}
+
+// ── The theme set ─────────────────────────────────────────────────────────
+
 #[test]
-fn there_are_exactly_seven_themes() {
-    assert_eq!(THEMES.len(), 7);
+fn there_are_exactly_two_themes() {
+    assert_eq!(THEMES.len(), 2);
     for t in THEMES {
         assert!(theme_path(t).exists(), "missing theme {t}");
+    }
+}
+
+#[test]
+fn the_removed_themes_are_gone() {
+    for t in REMOVED {
+        assert!(!theme_path(t).exists(), "{t}.slint should have been removed");
     }
 }
 
@@ -116,7 +135,7 @@ fn every_theme_defines_an_apply_function() {
     }
 }
 
-// ── Per-theme text contrast (7) ───────────────────────────────────────────
+// ── Per-theme text contrast (2) ───────────────────────────────────────────
 
 #[test]
 fn light_text_contrast() {
@@ -125,26 +144,6 @@ fn light_text_contrast() {
 #[test]
 fn dark_text_contrast() {
     assert_body_contrast("dark");
-}
-#[test]
-fn glass_dark_text_contrast() {
-    assert_body_contrast("glass_dark");
-}
-#[test]
-fn clay_light_text_contrast() {
-    assert_body_contrast("clay_light");
-}
-#[test]
-fn clay_dark_text_contrast() {
-    assert_body_contrast("clay_dark");
-}
-#[test]
-fn neu_light_text_contrast() {
-    assert_body_contrast("neu_light");
-}
-#[test]
-fn neu_dark_text_contrast() {
-    assert_body_contrast("neu_dark");
 }
 
 fn assert_body_contrast(theme: &str) {
@@ -161,7 +160,7 @@ fn assert_body_contrast(theme: &str) {
     assert!(ratio >= 4.5, "{theme}: text contrast {ratio:.2} < 4.5");
 }
 
-// ── Per-theme editor contrast (7) ─────────────────────────────────────────
+// ── Per-theme editor contrast (2) ─────────────────────────────────────────
 
 #[test]
 fn light_editor_contrast() {
@@ -171,32 +170,12 @@ fn light_editor_contrast() {
 fn dark_editor_contrast() {
     assert_editor_contrast("dark");
 }
-#[test]
-fn glass_dark_editor_contrast() {
-    assert_editor_contrast("glass_dark");
-}
-#[test]
-fn clay_light_editor_contrast() {
-    assert_editor_contrast("clay_light");
-}
-#[test]
-fn clay_dark_editor_contrast() {
-    assert_editor_contrast("clay_dark");
-}
-#[test]
-fn neu_light_editor_contrast() {
-    assert_editor_contrast("neu_light");
-}
-#[test]
-fn neu_dark_editor_contrast() {
-    assert_editor_contrast("neu_dark");
-}
 
 fn assert_editor_contrast(theme: &str) {
     let text = read_theme(theme);
     let fg = token_hex(&text, "editor-text").unwrap();
     let bg_raw = token_hex(&text, "editor-bg").unwrap();
-    // Translucent editor backgrounds (glass) composite over the window bg.
+    // A translucent editor background composites over the window bg.
     let window_bg = token_hex(&text, "window-bg").unwrap();
     let bg = if bg_raw.3 < 1.0 {
         composite(bg_raw, window_bg)
@@ -207,7 +186,7 @@ fn assert_editor_contrast(theme: &str) {
     assert!(ratio >= 4.5, "{theme}: editor contrast {ratio:.2} < 4.5");
 }
 
-// ── editor-text-on-highlight must stay dark everywhere (7) ────────────────
+// ── editor-text-on-highlight must stay dark everywhere (2) ────────────────
 
 #[test]
 fn light_on_highlight_is_dark() {
@@ -216,26 +195,6 @@ fn light_on_highlight_is_dark() {
 #[test]
 fn dark_on_highlight_is_dark() {
     assert_on_highlight_dark("dark");
-}
-#[test]
-fn glass_dark_on_highlight_is_dark() {
-    assert_on_highlight_dark("glass_dark");
-}
-#[test]
-fn clay_light_on_highlight_is_dark() {
-    assert_on_highlight_dark("clay_light");
-}
-#[test]
-fn clay_dark_on_highlight_is_dark() {
-    assert_on_highlight_dark("clay_dark");
-}
-#[test]
-fn neu_light_on_highlight_is_dark() {
-    assert_on_highlight_dark("neu_light");
-}
-#[test]
-fn neu_dark_on_highlight_is_dark() {
-    assert_on_highlight_dark("neu_dark");
 }
 
 fn assert_on_highlight_dark(theme: &str) {
@@ -251,46 +210,25 @@ fn assert_on_highlight_dark(theme: &str) {
 // ── Shared invariants ─────────────────────────────────────────────────────
 
 #[test]
-fn glass_dark_uses_translucent_editor_surface() {
-    let text = read_theme("glass_dark");
-    let bg = token_hex(&text, "editor-bg").unwrap();
-    assert!(bg.3 < 1.0, "glass editor-bg should be translucent");
+fn the_dark_theme_marks_itself_dark() {
+    assert_eq!(token_bool(&read_theme("dark"), "is-dark"), Some(true));
 }
 
 #[test]
-fn dark_themes_mark_themselves_dark() {
-    for t in ["dark", "glass_dark", "clay_dark", "neu_dark"] {
-        let text = read_theme(t);
-        assert_eq!(token_bool(&text, "is-dark"), Some(true), "{t}");
-    }
-}
-
-#[test]
-fn light_themes_mark_themselves_light() {
-    for t in ["light", "clay_light", "neu_light"] {
-        let text = read_theme(t);
-        assert_eq!(token_bool(&text, "is-dark"), Some(false), "{t}");
-    }
+fn the_light_theme_marks_itself_light() {
+    assert_eq!(token_bool(&read_theme("light"), "is-dark"), Some(false));
 }
 
 #[test]
 fn every_theme_sets_an_accent() {
     for t in THEMES {
-        let text = read_theme(t);
-        assert!(token_hex(&text, "accent-colour").is_some(), "{t}");
+        assert!(token_hex(&read_theme(t), "accent-colour").is_some(), "{t}");
     }
 }
 
 #[test]
 fn tokens_file_declares_all_colour_tokens() {
-    let tokens = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("ui")
-            .join("themes")
-            .join("tokens.slint"),
-    )
-    .unwrap();
+    let tokens = tokens_source();
     assert!(tokens.contains("export global AppTheme"));
     assert!(tokens.contains("editor-text-on-highlight"));
 }
@@ -323,8 +261,8 @@ fn surface_hover_differs_from_surface() {
         let text = read_theme(t);
         let base = token_hex(&text, "surface").unwrap();
         let hover = token_hex(&text, "surface-hover").unwrap();
-        // Compare the full RGBA tuple: glass themes keep the same RGB and
-        // separate the states by alpha alone (#ffffff20 -> #ffffff30).
+        // Compare the full RGBA tuple: themes may separate the states by
+        // alpha alone (#ffffff20 -> #ffffff30).
         assert_ne!(
             (base.0, base.1, base.2, base.3),
             (hover.0, hover.1, hover.2, hover.3),
@@ -355,15 +293,7 @@ fn tabs_have_active_and_inactive_colours() {
 #[test]
 fn every_theme_writes_the_full_colour_token_set() {
     // 32 colour tokens per theme, matching tools/check_consistency.py.
-    let tokens = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("ui")
-            .join("themes")
-            .join("tokens.slint"),
-    )
-    .unwrap();
-    let colour_count = tokens
+    let colour_count = tokens_source()
         .lines()
         .filter(|l| l.contains("property <color>"))
         .count();
@@ -388,14 +318,7 @@ fn accent_text_reads_on_accent() {
 
 #[test]
 fn shared_layout_constants_are_declared_once() {
-    let tokens = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("ui")
-            .join("themes")
-            .join("tokens.slint"),
-    )
-    .unwrap();
+    let tokens = tokens_source();
     // Slint property names are kebab-case in the .slint sources.
     for c in ["titlebar-height", "toolbar-height", "sidebar-width", "radius-md"] {
         assert!(tokens.contains(c), "missing shared constant {c}");

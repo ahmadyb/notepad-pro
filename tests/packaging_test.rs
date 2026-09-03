@@ -60,7 +60,7 @@ fn readme_documents_all_eight_features() {
         "Extract by colour",
         "List mode",
         "Notes sidebar",
-        "Seven themes",
+        "Two themes",
         "Liquid animations",
         "Custom window controls",
     ] {

@@ -24,8 +24,8 @@ release binary is a single self-contained file (~12 MB stripped).
    0–5, plus markdown shortcuts (`- `, `* `, `[] `, `1. `).
 5. **Notes sidebar** — SQLite-backed (WAL, `STRICT` table) quick notes with
    pinning, search, sorting and highlight chips.
-6. **Seven themes** — light, dark, glass-dark, clay-light, clay-dark,
-   neu-light, neu-dark, driven by a shared `AppTheme` token store.
+6. **Two themes** — light and dark, driven by a shared `AppTheme`
+   token store.
 7. **Liquid animations** — drifting background blobs, button ripple, toast
    bounce and theme cross-fade, all in pure Slint.
 8. **Custom window controls** — Win11-metric (46×32) minimise/maximise/close,
@@ -66,7 +66,7 @@ Settings, the session and the notes database live in
 * `app/` — the binary crate (`main.rs`, `state.rs`, `callbacks/`, `dialogs/`).
 * `core/` — a Slint-free library: editor, files, db, config, highlight.
 * `ui/` — all `.slint` markup, components and themes.
-* `tests/` — the 169-check integration suite (`slint-testing`).
+* `tests/` — the 154-check integration suite (`slint-testing`).
 * `wix/`, `debian/` — packaging. See `PACKAGING.md`.
 
 See `DEVIATIONS.md` for deliberate changes from the original spec and

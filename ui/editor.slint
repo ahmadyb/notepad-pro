@@ -89,7 +89,12 @@ export component Editor inherits Rectangle {
         scroll := ScrollView {
             width: 100%;
             height: 100%;
-            viewport-height: input.preferred-height + root.text-size;
+            // Without an explicit viewport-width the ScrollView can never
+            // scroll sideways, so wrap-off text past the right edge would be
+            // unreachable. Binding it to the content makes the horizontal
+            // bar appear exactly when the longest line exceeds the view.
+            viewport-width: content.width;
+            viewport-height: content.height;
 
             content := Rectangle {
                 // Wrap on: fill the visible width and wrap. Wrap off: grow to
@@ -177,5 +182,14 @@ export component Editor inherits Rectangle {
         scroll.viewport-y = max(
             -(scroll.viewport-height - scroll.visible-height),
             min(0px, scroll.visible-height / 3 - y));
+    }
+
+    /// Put the native caret at a UTF-8 byte offset in the document. Rust calls
+    /// this after it has rewritten the surface text (markdown shortcut folded
+    /// into a list marker, list continuation on Enter): assigning `text`
+    /// resets the caret to offset 0, which is what made typing appear to run
+    /// backwards from the top of the file.
+    public function place-caret(offset: int) {
+        input.set-selection-offsets(offset, offset);
     }
 }

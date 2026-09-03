@@ -164,11 +164,6 @@ pub fn apply_current_theme(window: &AppWindow, state: &SharedState) {
 pub fn apply_theme(window: &AppWindow, name: &str) {
     match name {
         "dark" => window.invoke_apply_dark_theme(),
-        "glass-dark" => window.invoke_apply_glass_dark_theme(),
-        "clay-light" => window.invoke_apply_clay_light_theme(),
-        "clay-dark" => window.invoke_apply_clay_dark_theme(),
-        "neu-light" => window.invoke_apply_neu_light_theme(),
-        "neu-dark" => window.invoke_apply_neu_dark_theme(),
         _ => window.invoke_apply_light_theme(),
     }
 }

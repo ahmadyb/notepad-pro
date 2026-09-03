@@ -39,6 +39,32 @@ reported bugs are fixed.
   at renderer-measured line geometry; wrap-off keeps every character
   reachable via horizontal scrolling.
 
+### Changed (editing hardening, theme reduction, 2026-09-03)
+- Theme set reduced to **light + dark** on request. The five extra themes
+  (glass-dark, clay-light, clay-dark, neu-light, neu-dark) were removed from
+  the UI picker, the Rust settings mapping, the consistency lint and the test
+  suites; the theme suite now also asserts the removed files stay gone.
+- Enter can no longer destroy lines: the split line is found by diffing the
+  old document against the surface's new text instead of trusting the
+  pixel-mapped caret, which lagged the native edit and joined the wrong pair
+  of lines. List continuation now carries bullet/number/check metadata onto
+  the new line *without rewriting the surface text*, so the native caret
+  never moves.
+- When Rust genuinely must rewrite the surface (a markdown shortcut folds
+  `- ` / `* ` / `1. ` / `[] ` into a list marker), the caret is restored to
+  the right UTF-8 offset through the new `place-caret` Slint function
+  (`TextInput.set-selection-offsets`) — no more typing that appeared to run
+  backwards from the top of the file.
+- Horizontal scrolling fixed: the editor `ScrollView` binds `viewport-width`
+  to its content, so wrap-off shows a horizontal scrollbar whenever the
+  longest line exceeds the view (previously text ran off the right edge with
+  nothing to reach it).
+- Logo and window icon now have a real alpha channel: the four opaque white
+  corners are transparent, and `app.ico` was rebuilt (16–256) from the masked
+  artwork.
+- New unit tests for split detection, caret restoration and list
+  continuation; integration suite is now 154 checks (theme suite 37 → 22).
+
 ### Fixed (editor & shell pass, 2026-09-02)
 - Editor is now a true textarea: rows are read-only `TextInput`s that own
   the mouse (caret placement, drag/double-click selection, native Copy)

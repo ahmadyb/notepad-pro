@@ -299,24 +299,43 @@ impl AppState {
         self.invalidate_find();
     }
 
-    /// After the native surface split line `caret_line` with Enter, re-join
-    /// the halves and let the list engine re-split so bullets / numbers /
-    /// checks continue onto the new line.
-    pub fn continue_list_after_enter(&mut self, caret_line: usize) {
-        let count = self.doc().line_count();
-        if caret_line == 0 || caret_line >= count {
+    /// The native surface split old line `i` into lines `i` and `i + 1` with
+    /// Enter. Carry the list metadata onto the new line so bullets, numbers
+    /// and checkboxes continue — **without rewriting any text**.
+    ///
+    /// The surface already holds the right characters, so re-joining and
+    /// re-splitting here (as this used to do) only risked desynchronising the
+    /// model from the widget and throwing the native caret back to offset 0.
+    pub fn continue_list_after_split(&mut self, i: usize) {
+        let (list_type, indent, text_empty) = match self.doc().lines.get(i) {
+            Some(l) => (l.list_type, l.indent, l.text.is_empty()),
+            None => return,
+        };
+        if list_type == ListType::None {
+            return; // plain text: nothing to continue
+        }
+        if text_empty {
+            // Enter on an empty item outdents, or exits the list at depth 0.
+            let line = &mut self.doc_mut().lines[i];
+            if line.indent > 0 {
+                line.indent -= 1;
+            } else {
+                line.list_type = ListType::None;
+                line.checked = false;
+            }
+            ListEngine::renumber(&mut self.doc_mut().lines);
+            self.doc_mut().commit();
+            self.invalidate_find();
             return;
         }
-        let a = self.doc().lines[caret_line - 1].text.clone();
-        let b = self.doc().lines[caret_line].text.clone();
-        let col = a.chars().count();
-        self.doc_mut().lines.remove(caret_line);
-        self.doc_mut().lines[caret_line - 1].text = format!("{a}{b}");
-        ListEngine::handle_enter(&mut self.doc_mut().lines, caret_line - 1, col);
+        if i + 1 < self.doc().line_count() {
+            let new = &mut self.doc_mut().lines[i + 1];
+            new.list_type = list_type;
+            new.indent = indent;
+            new.checked = false;
+        }
+        ListEngine::renumber(&mut self.doc_mut().lines);
         self.doc_mut().commit();
-        self.cursor.line = caret_line;
-        self.cursor.col = 0;
-        self.mark_dirty();
         self.invalidate_find();
     }
 

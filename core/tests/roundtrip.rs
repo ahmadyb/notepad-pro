@@ -212,7 +212,7 @@ fn settings_session_and_database_survive_a_restart() {
 
     // --- first run -------------------------------------------------------
     let mut settings = Settings::default();
-    settings.theme = "clay-dark".into();
+    settings.theme = "dark".into();
     settings.zoom = 1.25;
     settings.remember_file("/tmp/sprint.txt");
     settings.save(&settings_path).unwrap();
@@ -237,7 +237,7 @@ fn settings_session_and_database_survive_a_restart() {
 
     // --- second run ------------------------------------------------------
     let settings2 = Settings::load(&settings_path);
-    assert_eq!(settings2.theme, "clay-dark");
+    assert_eq!(settings2.theme, "dark");
     assert_eq!(settings2.zoom, 1.25);
     assert_eq!(settings2.recent_files[0], "/tmp/sprint.txt");
 

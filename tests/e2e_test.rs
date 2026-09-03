@@ -758,6 +758,6 @@ fn note_count_label_formats() {
 #[test]
 fn toggle_dark_twin_from_dark_returns_light() {
     let mut s = app();
-    s.settings.theme = "clay-dark".into();
-    assert_eq!(s.toggle_dark_twin(), "clay-light");
+    s.settings.theme = "dark".into();
+    assert_eq!(s.toggle_dark_twin(), "light");
 }

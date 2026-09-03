@@ -10,7 +10,7 @@ use crate::callbacks::highlight_cb;
 use crate::callbacks::notes_cb;
 use crate::callbacks::{lock, normalize_key, settings_cb, toast, SharedState};
 use crate::dialogs;
-use crate::state::PendingAction;
+use crate::state::{AppState, PendingAction};
 use crate::sync;
 use crate::ui::AppWindow;
 
@@ -77,21 +77,41 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
         let w = window.as_weak();
         window.on_doc_edited(move |text: SharedString| {
             let Some(win) = w.upgrade() else { return };
-            let (before, caret) = {
+            let (old_texts, caret_hint) = {
                 let guard = lock(&s);
-                (guard.doc().line_count(), guard.cursor)
+                (
+                    guard.doc().lines.iter().map(|l| l.text.clone()).collect::<Vec<_>>(),
+                    guard.cursor.line,
+                )
             };
+            let new_texts: Vec<String> = text
+                .as_str()
+                .split('\n')
+                .map(|l| l.trim_end_matches('\r').to_string())
+                .collect();
+            // Locate the Enter split from the text itself. The pixel-mapped
+            // caret lags the native edit, and using it here joined the wrong
+            // pair of lines — the "Enter rewrites my line / typing runs
+            // backwards" corruption.
+            let split = detect_enter_split(&old_texts, &new_texts, caret_hint);
             {
                 let mut guard = lock(&s);
                 guard.apply_full_text(text.as_str());
-                // Native Enter split one line into two: let the list engine
-                // re-split so bullets/numbers/checks continue.
-                if guard.doc().line_count() == before + 1 && caret.line > 0 {
-                    let l = caret.line.min(guard.doc().line_count() - 1);
-                    guard.continue_list_after_enter(l);
+                if let Some(i) = split {
+                    guard.continue_list_after_split(i);
+                    let last = guard.doc().line_count().saturating_sub(1);
+                    guard.cursor.line = (i + 1).min(last);
+                    guard.cursor.col = 0;
                 }
             }
             sync::sync_all(&win, &lock(&s));
+            // Assigning `text` resets the native caret to offset 0. If the
+            // reconciliation rewrote the surface (markdown shortcut folded
+            // into a list marker, list continuation) put the caret back where
+            // the user was, otherwise typing continues at the top of the file.
+            if let Some(offset) = caret_restore_offset(&lock(&s), text.as_str(), split) {
+                win.invoke_place_caret(offset as i32);
+            }
         });
     }
 
@@ -639,11 +659,67 @@ pub fn press_enter(window: &AppWindow, state: &SharedState) {
     }
 }
 
+/// Locate the line a native Enter split, by diffing the old and new document.
+///
+/// Returns the index (in the OLD document) of the line that was split.
+/// `caret_hint` only breaks ties: when the split line is empty, every
+/// surrounding empty line satisfies the prefix test, so the closest one to the
+/// last known caret wins. Text is never guessed at — a non-match returns
+/// `None` and the edit is treated as ordinary typing.
+fn detect_enter_split(old: &[String], new: &[String], caret_hint: usize) -> Option<usize> {
+    if new.len() != old.len() + 1 {
+        return None;
+    }
+    let mut best: Option<(usize, usize)> = None;
+    for i in 0..old.len() {
+        if new[..i] != old[..i] || new[i + 2..] != old[i + 1..] {
+            continue;
+        }
+        let head = &new[i];
+        let tail = &new[i + 1];
+        // `head` must be a byte-prefix of the old line and `tail` its rest.
+        if old[i].starts_with(head.as_str()) && &old[i][head.len()..] == tail.as_str() {
+            let distance = i.abs_diff(caret_hint);
+            if best.map(|(d, _)| distance < d).unwrap_or(true) {
+                best = Some((distance, i));
+            }
+        }
+    }
+    best.map(|(_, i)| i)
+}
+
+/// The UTF-8 byte offset the native caret should be restored to, or `None`
+/// when the model text already equals what the surface shows (nothing was
+/// rewritten, so the native caret is still exactly where the user left it).
+fn caret_restore_offset(state: &AppState, surface: &str, split: Option<usize>) -> Option<usize> {
+    let lines: Vec<&str> = state.doc().lines.iter().map(|l| l.text.as_str()).collect();
+    if lines.join("\n") == surface {
+        return None;
+    }
+    let line = split
+        .map(|i| i + 1)
+        .unwrap_or_else(|| {
+            surface
+                .split('\n')
+                .zip(lines.iter())
+                .position(|(a, b)| a != *b)
+                .unwrap_or(state.cursor.line)
+        })
+        .min(lines.len().saturating_sub(1));
+    let col = state.cursor.col.min(lines[line].chars().count());
+    let mut offset: usize = lines[..line].iter().map(|l| l.len() + 1).sum();
+    offset += lines[line]
+        .char_indices()
+        .nth(col)
+        .map(|(i, _)| i)
+        .unwrap_or(lines[line].len());
+    Some(offset)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::callbacks::shared;
-    use crate::state::AppState;
     use notepad_pro_core::config::settings::Settings;
     use notepad_pro_core::db::notes::NotesDb;
 
@@ -722,5 +798,188 @@ mod tests {
         let s = state();
         assert!(!lock(&s).undo());
         assert!(!lock(&s).redo());
+    }
+
+    // ── Enter-split detection (the "Enter eats my line" bug) ──────────────
+
+    fn v(parts: &[&str]) -> Vec<String> {
+        parts.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn enter_in_the_middle_of_a_line_is_found() {
+        let old = v(&["alpha", "beta"]);
+        let new = v(&["al", "pha", "beta"]);
+        assert_eq!(detect_enter_split(&old, &new, 0), Some(0));
+    }
+
+    #[test]
+    fn enter_on_a_later_line_is_found() {
+        let old = v(&["a", "bcd", "z"]);
+        let new = v(&["a", "b", "cd", "z"]);
+        assert_eq!(detect_enter_split(&old, &new, 1), Some(1));
+    }
+
+    #[test]
+    fn enter_at_the_end_of_a_line_is_found() {
+        let old = v(&["abc"]);
+        let new = v(&["abc", ""]);
+        assert_eq!(detect_enter_split(&old, &new, 0), Some(0));
+    }
+
+    #[test]
+    fn plain_typing_is_not_mistaken_for_enter() {
+        let old = v(&["alpha", "beta"]);
+        let new = v(&["alphabet", "beta"]);
+        assert_eq!(detect_enter_split(&old, &new, 0), None);
+    }
+
+    #[test]
+    fn a_two_line_paste_is_not_an_enter_split() {
+        let old = v(&["alpha"]);
+        let new = v(&["alpha", "x", "y"]);
+        assert_eq!(detect_enter_split(&old, &new, 0), None);
+    }
+
+    #[test]
+    fn a_deletion_is_not_an_enter_split() {
+        let old = v(&["a", "b", "c"]);
+        let new = v(&["a", "c"]);
+        assert_eq!(detect_enter_split(&old, &new, 0), None);
+    }
+
+    #[test]
+    fn an_empty_line_split_prefers_the_line_near_the_caret() {
+        // Every empty line satisfies the prefix test; the caret breaks the tie.
+        let old = v(&["", "", ""]);
+        let new = v(&["", "", "", ""]);
+        assert_eq!(detect_enter_split(&old, &new, 2), Some(2));
+        assert_eq!(detect_enter_split(&old, &new, 0), Some(0));
+    }
+
+    #[test]
+    fn multi_byte_text_splits_on_byte_boundaries() {
+        // "é" is two bytes: a wrong slice here would panic, not just mis-count.
+        let old = v(&["éé"]);
+        let new = v(&["é", "é"]);
+        assert_eq!(detect_enter_split(&old, &new, 0), Some(0));
+    }
+
+    // ── Caret restoration after Rust rewrites the surface ─────────────────
+
+    #[test]
+    fn no_caret_restore_when_the_model_matches_the_surface() {
+        let s = state();
+        lock(&s).load_text("t.txt", "one\ntwo", None);
+        assert_eq!(caret_restore_offset(&lock(&s), "one\ntwo", None), None);
+    }
+
+    #[test]
+    fn the_caret_lands_at_the_start_of_the_new_line_after_a_split() {
+        let s = state();
+        lock(&s).load_text("t.txt", "one\ntwo", None);
+        // The model folded "two" into a list line and dropped its text.
+        {
+            let mut guard = lock(&s);
+            guard.apply_full_text("one\n\nthree");
+            guard.cursor.line = 1;
+            guard.cursor.col = 0;
+        }
+        // Offset = "one\n" (4) + "" then the new line starts at 4.
+        assert_eq!(caret_restore_offset(&lock(&s), "one\n\ntwo", Some(0)), Some(4));
+    }
+
+    #[test]
+    fn the_caret_offset_counts_utf8_bytes() {
+        let s = state();
+        lock(&s).load_text("t.txt", "é\nb", None);
+        {
+            let mut guard = lock(&s);
+            guard.cursor.line = 1;
+            guard.cursor.col = 1;
+        }
+        // "é" is 2 bytes + '\n' = 3, then column 1 of "b" adds 1.
+        assert_eq!(caret_restore_offset(&lock(&s), "é\nx", None), Some(4));
+    }
+
+    // ── List continuation must not rewrite the text ───────────────────────
+
+    #[test]
+    fn a_bullet_continues_onto_the_new_line_without_touching_text() {
+        let s = state();
+        {
+            let mut guard = lock(&s);
+            guard.load_text("t.txt", "• first", None);
+            guard.cursor.line = 0;
+            guard.set_list_type(ListType::Bullet);
+            // The native surface split the line; the model catches up.
+            guard.apply_full_text("first\nrest");
+            guard.continue_list_after_split(0);
+            let lines = &guard.doc().lines;
+            assert_eq!(lines.len(), 2);
+            assert_eq!(lines[0].text, "first");
+            assert_eq!(lines[1].text, "rest", "text must not be rewritten");
+            assert_eq!(lines[1].list_type, ListType::Bullet);
+        }
+    }
+
+    #[test]
+    fn a_numbered_item_continues_and_renumbers() {
+        let s = state();
+        {
+            let mut guard = lock(&s);
+            guard.load_text("t.txt", "one\ntwo", None);
+            guard.cursor.line = 0;
+            guard.set_list_type(ListType::Number);
+            guard.cursor.line = 1;
+            guard.set_list_type(ListType::Number);
+            guard.apply_full_text("one\nmid\ntwo");
+            guard.continue_list_after_split(1);
+            let numbers: Vec<u32> = guard.doc().lines.iter().map(|l| l.number).collect();
+            assert_eq!(numbers, vec![1, 2, 3]);
+        }
+    }
+
+    #[test]
+    fn enter_on_an_empty_top_level_bullet_exits_the_list() {
+        let s = state();
+        {
+            let mut guard = lock(&s);
+            guard.load_text("t.txt", "", None);
+            guard.cursor.line = 0;
+            guard.set_list_type(ListType::Bullet);
+            guard.apply_full_text("\n");
+            guard.continue_list_after_split(0);
+            assert_eq!(guard.doc().lines[0].list_type, ListType::None);
+        }
+    }
+
+    #[test]
+    fn enter_on_an_empty_nested_bullet_outdents_instead() {
+        let s = state();
+        {
+            let mut guard = lock(&s);
+            guard.load_text("t.txt", "", None);
+            guard.set_list_type(ListType::Bullet);
+            guard.indent(true);
+            guard.apply_full_text("\n");
+            guard.continue_list_after_split(0);
+            let line = &guard.doc().lines[0];
+            assert_eq!(line.list_type, ListType::Bullet, "still in the list");
+            assert_eq!(line.indent, 0, "but outdented");
+        }
+    }
+
+    #[test]
+    fn a_plain_line_split_leaves_the_list_alone() {
+        let s = state();
+        {
+            let mut guard = lock(&s);
+            guard.load_text("t.txt", "plain", None);
+            guard.apply_full_text("pla\nin");
+            guard.continue_list_after_split(0);
+            assert_eq!(guard.doc().lines[0].list_type, ListType::None);
+            assert_eq!(guard.doc().lines[1].list_type, ListType::None);
+        }
     }
 }

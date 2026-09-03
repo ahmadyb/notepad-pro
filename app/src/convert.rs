@@ -447,7 +447,7 @@ mod tests {
     #[test]
     fn settings_roundtrip_through_the_ui_struct() {
         let mut settings = Settings::default();
-        settings.theme = "neu-dark".into();
+        settings.theme = "dark".into();
         settings.font_size = 18;
         settings.zoom = 1.5;
         let view = settings_to_ui(&settings);
