@@ -59,8 +59,16 @@ jobs:
         run: |
           foreach ($f in @("cargo.log", "cargo-test.log")) {
             if (Test-Path $f) {
-              Get-Content $f | Select-String -Pattern "^error|FAILED|panicked at|test result|^warning: unused|-->" -Context 0,6 | Select-Object -First 40 | ForEach-Object { $_.ToString().Split("\n") | ForEach-Object { Write-Output "::error::$_" } }
-              Get-Content $f | Select-Object -Last 45 | ForEach-Object { Write-Output "::error::TAIL[$f] $_" }
+              # Errors first (they own the annotation budget), then test
+              # failures, then the tail; warnings only if nothing else fired.
+              $errLines = Get-Content $f | Select-String -Pattern "^error" -Context 0,8 | Select-Object -First 25
+              $failLines = Get-Content $f | Select-String -Pattern "FAILED|panicked at|test result:" -Context 0,4 | Select-Object -First 20
+              if ($errLines -or $failLines) {
+                ($errLines + $failLines) | ForEach-Object { $_.ToString().Split("\n") | ForEach-Object { Write-Output "::error::$_" } }
+              } else {
+                Get-Content $f | Select-String -Pattern "^warning: unused|-->" -Context 0,4 | Select-Object -First 20 | ForEach-Object { $_.ToString().Split("\n") | ForEach-Object { Write-Output "::error::$_" } }
+              }
+              Get-Content $f | Select-Object -Last 25 | ForEach-Object { Write-Output "::error::TAIL[$f] $_" }
             }
           }
 

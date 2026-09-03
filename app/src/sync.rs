@@ -173,6 +173,7 @@ pub fn wrapped_visual_lines(text: &str, avail: f32) -> f32 {
 pub fn col_at_point(text: &str, avail: f32, row_within: usize, x_chars: f32) -> usize {
     let mut row = 0usize;
     let mut row_start = 0usize;
+    let mut prev_row_start = 0usize;
     let mut used = 0.0f32;
     let mut chars = 0usize;
     for (i, token) in text.split(' ').enumerate() {
@@ -181,6 +182,7 @@ pub fn col_at_point(text: &str, avail: f32, row_within: usize, x_chars: f32) -> 
             if used > 0.0 && used + 1.0 + tw as f32 > avail {
                 // The space stays at the (invisible) end of the previous row;
                 // the new visual row starts at the token itself.
+                prev_row_start = row_start;
                 row += 1;
                 row_start = chars + 1;
                 chars += 1;
@@ -198,12 +200,14 @@ pub fn col_at_point(text: &str, avail: f32, row_within: usize, x_chars: f32) -> 
                 chars += tw - placed;
                 placed = tw;
             } else if used > 1e-3 {
+                prev_row_start = row_start;
                 row += 1;
                 row_start = chars;
                 used = 0.0;
             } else {
                 placed += rem;
                 chars += rem;
+                prev_row_start = row_start;
                 row += 1;
                 row_start = chars;
                 used = 0.0;
@@ -213,12 +217,17 @@ pub fn col_at_point(text: &str, avail: f32, row_within: usize, x_chars: f32) -> 
             break;
         }
     }
-    if row < row_within {
+    let base = if row == row_within {
+        row_start
+    } else if row > row_within {
+        // Walked past the target row: it started where the next one took over.
+        prev_row_start
+    } else {
         // x past the last visual row: clamp to the line end.
         return text.chars().count();
-    }
+    };
     let in_row = x_chars.round().max(0.0) as usize;
-    (row_start + in_row).min(text.chars().count())
+    (base + in_row).min(text.chars().count())
 }
 
 /// Reconciles `fresh` against the live row model strictly in place.
