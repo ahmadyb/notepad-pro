@@ -36,6 +36,7 @@ mod imp {
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM, LRESULT, TRUE, WPARAM};
     use windows::Win32::System::LibraryLoader::LoadLibraryW;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VIRTUAL_KEY};
     use windows::Win32::UI::WindowsAndMessaging::*;
 
     /// `NMHDR` declared locally: the notification header of `WM_NOTIFY`.
@@ -163,14 +164,14 @@ mod imp {
     static SUPPRESS: AtomicBool = AtomicBool::new(false);
 
     // The subclass procs run on the UI thread; hand them the live handles.
-    static CONTEXT: OnceLock<Mutex<Option<(AppWindow, SharedState)>>> = OnceLock::new();
+    // `AppWindow` is !Send, so this must be thread-local, not a static.
+    thread_local! {
+        static CONTEXT: std::cell::RefCell<Option<(AppWindow, SharedState)>> =
+            std::cell::RefCell::new(None);
+    }
 
     fn slot() -> &'static Mutex<Option<Native>> {
         NATIVE.get_or_init(|| Mutex::new(None))
-    }
-
-    fn context_slot() -> &'static Mutex<Option<(AppWindow, SharedState)>> {
-        CONTEXT.get_or_init(|| Mutex::new(None))
     }
 
     pub fn attached() -> bool {
@@ -244,20 +245,25 @@ mod imp {
             let ctrl_down = unsafe { GetKeyState(VIRTUAL_KEY(VK_CONTROL)) } < 0;
             let shift_down = unsafe { GetKeyState(VIRTUAL_KEY(VK_SHIFT)) } < 0;
             let vk = VIRTUAL_KEY(wparam.0 as u16);
-            if let Some((window, state)) = context_slot().lock().unwrap().clone() {
+            let handled = CONTEXT.with(|c| {
+                let b = c.borrow();
+                let (window, state) = b.as_ref()?;
                 if ctrl_down {
                     if let Some(ch) = vkey_to_char(vk) {
                         let text = ch.to_string();
-                        if window_cb::handle_shortcut(&window, &state, &text, true, shift_down)
-                        {
-                            return LRESULT(0);
+                        if window_cb::handle_shortcut(window, state, &text, true, shift_down) {
+                            return Some(LRESULT(0));
                         }
                     }
                 } else if vk == VIRTUAL_KEY(VK_TAB) {
-                    lock(&state).indent(!shift_down);
-                    sync::sync_all(&window, &lock(&state));
-                    return LRESULT(0);
+                    lock(state).indent(!shift_down);
+                    sync::sync_all(window, &lock(state));
+                    return Some(LRESULT(0));
                 }
+                None
+            });
+            if let Some(r) = handled {
+                return r;
             }
         }
         call_old(OLD_EDIT_PROC.load(Ordering::SeqCst), hwnd, msg, wparam, lparam)
@@ -694,7 +700,7 @@ mod imp {
     }
 
     pub fn start_attach(window: &AppWindow, state: &SharedState) {
-        *context_slot().lock().unwrap() = Some((window.clone(), state.clone()));
+        CONTEXT.with(|c| *c.borrow_mut() = Some((window.clone(), state.clone())));
         let w = window.clone();
         let s = state.clone();
         let timer = slint::Timer::default();
