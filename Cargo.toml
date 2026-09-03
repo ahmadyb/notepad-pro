@@ -34,6 +34,11 @@ dirs = "5"
 rfd = "0.14"
 clap = { version = "4", features = ["derive"] }
 
+# --- Transitive pins ------------------------------------------------------
+# tinyvec 1.13.0 ships a broken no-alloc build ("cannot find macro `vec`");
+# the lockfile is not committed, so pin until a fixed release is available.
+tinyvec = "=1.12.0"
+
 # --- Error handling / diagnostics ----------------------------------------
 anyhow = "1"
 thiserror = "1"
