@@ -273,8 +273,8 @@ mod imp {
 
     fn vkey_to_char(vk: VIRTUAL_KEY) -> Option<char> {
         match vk.0 {
-            0x41..=0x5A => Some((b'a' + (vk.0 - 0x41)) as char),
-            0x30..=0x39 => Some((b'0' + (vk.0 - 0x30)) as char),
+            0x41..=0x5A => Some(char::from((vk.0 - 0x41 + b'a' as u16) as u8)),
+            0x30..=0x39 => Some(char::from(vk.0 as u8)),
             _ => None,
         }
     }
