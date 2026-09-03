@@ -60,6 +60,11 @@ struct Cli {
     #[arg(long)]
     reset_session: bool,
 
+    /// Use the embedded native Win32 Rich Edit control as the editor surface
+    /// (opt-in; also persisted as `nativeEditor` in settings.json).
+    #[arg(long)]
+    rich_edit: bool,
+
     /// Verbose logging.
     #[arg(short, long)]
     verbose: bool,
@@ -131,9 +136,18 @@ fn main() -> Result<()> {
         sync::focus_line(&window, caret);
     }
 
-    // Native editor surface: parent a Win32 Rich Edit control over the
-    // editor region (the Slint surface stays as fallback / overlay owner).
-    notepad_pro::native_edit::start_attach(&window, &state);
+    // Native editor surface (opt-in): parent a Win32 Rich Edit control over
+    // the editor region. The pure-Slint surface is the default and stays the
+    // automatic fallback; on the user's machine the embedded child proved
+    // unstable (invisible child, hangs on Enter/paste), so it ships behind
+    // `--rich-edit` / the `nativeEditor` setting instead of on by default.
+    let use_native = cli.rich_edit || callbacks::lock(&state).settings.native_editor;
+    if use_native {
+        if cli.rich_edit {
+            callbacks::lock(&state).settings.native_editor = true;
+        }
+        notepad_pro::native_edit::start_attach(&window, &state);
+    }
 
     tracing::info!(
         "{} {} starting",

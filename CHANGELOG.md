@@ -69,6 +69,12 @@ reported bugs are fixed.
   parented inside the Slint window — real scrollbars, native caret/selection/
   clipboard/undo — with highlights and bullet/number formatting applied from
   Rust. The pure-Slint `TextInput` surface remains as the automatic fallback.
+- **Rich Edit is opt-in (`--rich-edit` / `nativeEditor: true`).** Real-world
+  use showed the embedded child could hang on Enter/paste and stay invisible,
+  so the proven pure-Slint surface is the default again; the embedding ships
+  behind the flag with two fixes: window discovery now matches the title
+  anywhere (titles are "file — NotePad Pro"), and when the control normalises
+  pushed text the model adopts it instead of ping-ponging `WM_SETTEXT`.
 
 ### Fixed (editor & shell pass, 2026-09-02)
 - Editor is now a true textarea: rows are read-only `TextInput`s that own

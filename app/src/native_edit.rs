@@ -155,6 +155,7 @@ mod imp {
         wrap: Option<bool>,
         theme: String,
         style_sig: String,
+        last_push: String,
     }
 
     static NATIVE: OnceLock<Mutex<Option<Native>>> = OnceLock::new();
@@ -188,7 +189,7 @@ mod imp {
         let n = unsafe { GetWindowTextW(hwnd, &mut buf) };
         if n > 0 {
             let t = String::from_utf16_lossy(&buf[..n as usize]);
-            if t.starts_with("NotePad Pro") {
+            if t.contains("NotePad Pro") {
                 unsafe { *(lparam.0 as *mut HWND) = hwnd };
                 return BOOL(0);
             }
@@ -337,6 +338,7 @@ mod imp {
                 wrap: None,
                 theme: String::new(),
                 style_sig: String::new(),
+                last_push: String::new(),
             });
         }
         true
@@ -610,24 +612,34 @@ mod imp {
         let want = rich_lines_from_state(&state).join("\r\n");
         let have = get_rich_text(edit);
         if have != want {
-            let off = utf16_offset(
-                &rich_lines_from_state(&state),
-                state.cursor.line,
-                state.cursor.col,
-            );
-            set_rich_text(edit, &want);
-            unsafe {
-                let mut cr = CharRange {
-                    cp_min: off,
-                    cp_max: off,
-                };
-                let _ = SendMessageW(
-                    edit,
-                    EM_EXSETSEL,
-                    WPARAM(0),
-                    LPARAM(&mut cr as *mut _ as isize),
+            if want != n.last_push {
+                let off = utf16_offset(
+                    &rich_lines_from_state(&state),
+                    state.cursor.line,
+                    state.cursor.col,
                 );
-                let _ = SendMessageW(edit, EM_SCROLLCARET, WPARAM(0), LPARAM(0));
+                set_rich_text(edit, &want);
+                n.last_push = want;
+                unsafe {
+                    let mut cr = CharRange {
+                        cp_min: off,
+                        cp_max: off,
+                    };
+                    let _ = SendMessageW(
+                        edit,
+                        EM_EXSETSEL,
+                        WPARAM(0),
+                        LPARAM(&mut cr as *mut _ as isize),
+                    );
+                    let _ = SendMessageW(edit, EM_SCROLLCARET, WPARAM(0), LPARAM(0));
+                }
+            } else {
+                // The control normalised what we pushed (e.g. line-ending
+                // rewrite). Do NOT fight it with another WM_SETTEXT — that
+                // ping-pong is what froze the UI; adopt the control's text
+                // into the model instead.
+                let model = model_text_from_rich(&have);
+                state.apply_full_text(&model);
             }
         }
 
