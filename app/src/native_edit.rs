@@ -297,7 +297,7 @@ mod imp {
                     | ES_NOHIDESEL
                     | ES_SAVESEL,
             );
-            let edit = CreateWindowExW(
+            let Ok(edit) = CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
                 w!("RICHEDIT50W"),
                 w!(""),
@@ -310,10 +310,9 @@ mod imp {
                 None,
                 hinst,
                 None,
-            );
-            if edit == HWND::default() {
+            ) else {
                 return false;
-            }
+            };
             let _ = SendMessageW(
                 edit,
                 EM_SETEVENTMASK,
