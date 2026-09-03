@@ -566,7 +566,7 @@ mod imp {
         let mut guard = slot().lock().unwrap();
         let Some(n) = guard.as_mut() else { return };
         let edit = HWND(n.edit as *mut _);
-        let state = lock(state_lock);
+        let mut state = lock(state_lock);
 
         // Geometry: sit exactly over the (hidden) Slint editor.
         let rect = (
