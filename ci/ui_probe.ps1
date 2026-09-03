@@ -112,6 +112,7 @@ if ($Tag -eq "interact") {
 }
 
 $exe = ".\target\release\notepadpro.exe"
+if ($Tag -eq "interact") { $env:NP_DEBUG_GEOM = "1" }
 $proc = Start-Process -FilePath $exe -ArgumentList $arg -PassThru
 Start-Sleep -Seconds 8
 
@@ -122,10 +123,24 @@ if ($Tag -ne "interact") { $bmp.Save("ui_probe_$Tag.png") }
 $bg = $bmp.GetPixel([Math]::Min($bounds.Width - 40, 1240), 700)
 
 if ($Tag -eq "interact") {
-    # ── locate text rows in the editor region ─────────────────────────────
+    # ── Rust's own geometry table ─────────────────────────────────────────
+    if (Test-Path "geodump.json") {
+        $gd = Get-Content "geodump.json" -Raw | ConvertFrom-Json
+        Write-Output "::warning::GEODUMP pitch=$($gd.pitch) char_w=$($gd.char_w) view_w=$($gd.view_w) zoom=$($gd.zoom) wrap=$($gd.wrap)"
+        Write-Output "::warning::GEODUMP y=$(@($gd.y) -join ',')"
+        Write-Output "::warning::GEODUMP h=$(@($gd.h) -join ',')"
+    } else {
+        Write-Output "::error::GEODUMP-MISSING geodump.json was not written"
+    }
+
+    # ── locate text rows in the editor region (merge split detections) ────
     $x0 = 40; $x1 = 700
     $y0 = 150; $y1 = [Math]::Min($bounds.Height - 60, 900)
-    $tops = TextRowTops $bmp $bg $x0 $x1 $y0 $y1
+    $raw = TextRowTops $bmp $bg $x0 $x1 $y0 $y1
+    $tops = @()
+    foreach ($t in $raw) {
+        if ($tops.Count -eq 0 -or ($t - $tops[$tops.Count - 1]) -gt 10) { $tops += $t }
+    }
     Write-Output "::warning::INTERACT text-row tops: $($tops[0..11] -join ',')"
     if ($tops.Count -lt 4) {
         Write-Output "::error::INTERACT-NO-TEXT only $($tops.Count) text rows found"

@@ -129,6 +129,34 @@ fn main() -> Result<()> {
 
     sync::sync_all(&window, &callbacks::lock(&state));
 
+    // CI-only geometry dump: NP_DEBUG_GEOM=1 writes Rust's overlay y-table
+    // (and the renderer metrics it was built from) to geodump.json once the
+    // first layout has produced renderer-measured pitches. Lets the interact
+    // probe diff Rust geometry against pixel-measured text rows.
+    if std::env::var("NP_DEBUG_GEOM").is_ok() {
+        let weak = window.as_weak();
+        let st = state.clone();
+        slint::Timer::single_shot(std::time::Duration::from_millis(1500), move || {
+            let Some(win) = weak.upgrade() else {
+                return;
+            };
+            let guard = callbacks::lock(&st);
+            let geom = sync::compute_geom(&win, &guard);
+            let ys: Vec<f32> = geom.iter().take(14).map(|g| g.0).collect();
+            let hs: Vec<f32> = geom.iter().take(14).map(|g| g.1).collect();
+            let dump = serde_json::json!({
+                "pitch": win.get_line_pitch(),
+                "char_w": win.get_editor_char_w(),
+                "view_w": win.get_editor_view_w(),
+                "zoom": guard.settings.zoom,
+                "wrap": guard.settings.word_wrap,
+                "y": ys,
+                "h": hs,
+            });
+            let _ = std::fs::write("geodump.json", serde_json::to_string(&dump).unwrap_or_default());
+        });
+    }
+
     // The caret line takes keyboard focus at startup, so the user can type
     // the moment the window appears.
     {
