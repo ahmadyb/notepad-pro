@@ -1,0 +1,79 @@
+[package]
+name = "notepad-pro"
+description = "NotePad Pro — a line-oriented text editor with colour highlighting, built on Rust + Slint"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+default-run = "notepadpro"
+
+[lib]
+name = "notepad_pro"
+path = "src/lib.rs"
+
+[[bin]]
+name = "notepadpro"
+path = "src/main.rs"
+
+[dependencies]
+notepad-pro-core = { path = "../core" }
+
+slint = { workspace = true, features = ["renderer-software"] }
+
+anyhow.workspace = true
+arboard.workspace = true
+clap.workspace = true
+dirs.workspace = true
+encoding_rs.workspace = true
+rfd.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true
+
+# Win32 Rich Edit child-window embedding (the native editor surface).
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Controls",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_LibraryLoader",
+] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+# The root integration suite lives at `notepad-pro/tests/` (see DEVIATIONS.md
+# deviation 9). A virtual workspace manifest cannot own `tests/`, so they are
+# attached to this package.
+[[test]]
+name = "e2e_test"
+path = "../tests/e2e_test.rs"
+
+[[test]]
+name = "theme_test"
+path = "../tests/theme_test.rs"
+
+[[test]]
+name = "window_controls_test"
+path = "../tests/window_controls_test.rs"
+
+[[test]]
+name = "packaging_test"
+path = "../tests/packaging_test.rs"
+
+[[test]]
+name = "api_safety_test"
+path = "../tests/api_safety_test.rs"
+
+[package.metadata.bundle]
+name = "NotePad Pro"
+identifier = "com.notepadpro.app"
+version = "1.0.2-slint"
+category = "public.app-category.productivity"
+short_description = "Line-oriented text editor with colour highlighting"

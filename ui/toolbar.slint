@@ -1,0 +1,216 @@
+// ui/toolbar.slint
+//
+// The main action bar. Every application action is reachable from here, so no
+// feature depends on a keyboard shortcut working.
+
+import { AppTheme } from "themes/tokens.slint";
+import { ColourEntry } from "model.slint";
+import { ColourSwatch } from "components/colour_swatch.slint";
+import { GhostButton, RippleButton } from "animations.slint";
+
+export component ToolBar inherits Rectangle {
+    in property <[ColourEntry]> palette;
+    in property <[string]> themes;
+    in property <string> theme;
+    in property <bool> sidebar-open;
+    in property <bool> find-open;
+    in property <bool> extract-open;
+    in property <bool> word-wrap;
+    in property <bool> can-undo;
+    in property <bool> can-redo;
+
+    callback new-file();
+    callback open-file();
+    callback save-file();
+    callback save-as();
+    callback do-undo();
+    callback do-redo();
+    // "none" | "bullet" | "number" | "check"
+    callback list-type-chosen(string);
+    // true = indent, false = outdent
+    callback indent-chosen(bool);
+    // Colour key, e.g. "yellow" or "#ff8800".
+    callback highlight-chosen(string);
+    callback open-custom-colour();
+    callback find-opened();
+    callback replace-opened();
+    callback extract-opened();
+    callback sidebar-toggled();
+    callback word-wrap-toggled();
+    callback theme-chosen(string);
+    // +1 zoom in, -1 zoom out, 0 reset.
+    callback zoom-step(float);
+    callback about-opened();
+
+    height: AppTheme.toolbar-height;
+    background: AppTheme.toolbar-bg;
+    border-width: 1px;
+    border-color: AppTheme.border-colour;
+    // No clip here: the theme dropdown is a child positioned below the bar.
+    // Clipping it hid the whole menu (the "themes won't open" report).
+
+    // ── Theme menu ────────────────────────────────────────────────────────
+    in-out property <bool> theme-menu-open: false;
+
+    HorizontalLayout {
+        padding: 6px;
+        spacing: 4px;
+        alignment: start;
+
+        RippleButton { label: "📝"; clicked => { root.new-file(); } }
+        RippleButton { label: "📂"; btn-colour: AppTheme.surface; label-colour: AppTheme.text-colour;
+                       clicked => { root.open-file(); } }
+        RippleButton { label: "💾"; clicked => { root.save-file(); } }
+        RippleButton { label: "📑"; btn-colour: AppTheme.surface; label-colour: AppTheme.text-colour;
+                       clicked => { root.save-as(); } }
+
+        Rectangle { width: 1px; height: 20px; background: AppTheme.border-colour; }
+
+        GhostButton { label: "↶"; enabled: root.can-undo; min-width: 32px; clicked => { root.do-undo(); } }
+        GhostButton { label: "↷"; enabled: root.can-redo; min-width: 32px; clicked => { root.do-redo(); } }
+
+        Rectangle { width: 1px; height: 20px; background: AppTheme.border-colour; }
+
+        // List markers
+        GhostButton { label: "•"; min-width: 30px; clicked => { root.list-type-chosen("bullet"); } }
+        GhostButton { label: "1."; min-width: 30px; clicked => { root.list-type-chosen("number"); } }
+        GhostButton { label: "☑"; min-width: 30px; clicked => { root.list-type-chosen("check"); } }
+        GhostButton { label: "⇥"; min-width: 30px; clicked => { root.indent-chosen(true); } }
+        GhostButton { label: "⇤"; min-width: 30px; clicked => { root.indent-chosen(false); } }
+        GhostButton { label: "¶"; min-width: 30px; clicked => { root.list-type-chosen("none"); } }
+
+        Rectangle { width: 1px; height: 20px; background: AppTheme.border-colour; }
+
+        // Highlight palette
+        for entry in root.palette : ColourSwatch {
+            swatch-colour: entry.colour;
+            swatch-name: entry.name;
+            active: entry.active;
+            clicked => { root.highlight-chosen(entry.key); }
+        }
+        GhostButton { label: "+"; min-width: 26px; clicked => { root.open-custom-colour(); } }
+
+        Rectangle { width: 1px; height: 20px; background: AppTheme.border-colour; }
+
+        GhostButton { label: "Find"; toggled: root.find-open; clicked => { root.find-opened(); } }
+        GhostButton { label: "Replace"; toggled: root.find-open; clicked => { root.replace-opened(); } }
+        GhostButton { label: "Extract"; toggled: root.extract-open; clicked => { root.extract-opened(); } }
+
+        Rectangle { width: 1px; height: 20px; background: AppTheme.border-colour; }
+
+        GhostButton { label: "Notes"; toggled: root.sidebar-open; clicked => { root.sidebar-toggled(); } }
+        GhostButton { label: "Wrap"; toggled: root.word-wrap; clicked => { root.word-wrap-toggled(); } }
+        GhostButton { label: "−"; min-width: 28px; clicked => { root.zoom-step(-1); } }
+        GhostButton { label: "+"; min-width: 28px; clicked => { root.zoom-step(1); } }
+        GhostButton { label: "1:1"; min-width: 32px; clicked => { root.zoom-step(0); } }
+
+        Rectangle { horizontal-stretch: 1; }
+
+        // Theme switcher
+        Rectangle {
+            width: theme-label.preferred-width + 46px;
+            height: 28px;
+            border-radius: AppTheme.radius-sm;
+            background: theme-touch.pressed ? AppTheme.surface-hover
+                : (theme-touch.has-hover || root.theme-menu-open ? AppTheme.surface : transparent);
+            animate background { duration: AppTheme.fast; }
+
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 8px;
+                spacing: 6px;
+                alignment: start;
+                theme-label := Text {
+                    text: root.theme;
+                    color: AppTheme.text-colour;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "▾";
+                    color: AppTheme.text-muted;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
+            }
+
+            theme-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.theme-menu-open = !root.theme-menu-open; }
+            }
+        }
+
+        GhostButton { label: "ℹ"; min-width: 28px; clicked => { root.about-opened(); } }
+    }
+
+    // ── Theme dropdown (explicit z, above the sidebar — bug #2) ───────────
+    if root.theme-menu-open : Rectangle {
+        z: 40;
+        x: parent.width - 230px;
+        y: parent.height + 4px;
+        width: 220px;
+        height: menu-stack.preferred-height + 12px;
+        border-radius: AppTheme.radius-md;
+        background: AppTheme.panel-bg;
+        border-width: 1px;
+        border-color: AppTheme.border-colour;
+        clip: true;
+
+        menu-stack := VerticalLayout {
+            padding: 6px;
+            spacing: 2px;
+            alignment: start;
+
+            for t[i] in root.themes : Rectangle {
+                height: 28px;
+                border-radius: AppTheme.radius-sm;
+                background: item-touch.has-hover ? AppTheme.surface-hover : transparent;
+                animate background { duration: AppTheme.fast; }
+
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 8px;
+                    spacing: 8px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: 12px;
+                        height: 12px;
+                        border-radius: 6px;
+                        background: Math.mod(i, 2) == 0 ? AppTheme.accent-colour : AppTheme.accent-colour-2;
+                    }
+
+                    Text {
+                        text: t;
+                        color: t == root.theme ? AppTheme.text-strong : AppTheme.text-colour;
+                        font-weight: t == root.theme ? 600 : 400;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    if t == root.theme : Text {
+                        text: "✓";
+                        color: AppTheme.accent-colour;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                item-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => {
+                        root.theme-chosen(t);
+                        root.theme-menu-open = false;
+                    }
+                }
+            }
+        }
+    }
+
+    // The menu closes when an entry is picked or the trigger is clicked again.
+    // A full-window dismiss overlay is deliberately not used: sizing one
+    // correctly from inside the toolbar is fragile, and a mis-sized overlay
+    // would swallow clicks meant for the editor.
+}
+

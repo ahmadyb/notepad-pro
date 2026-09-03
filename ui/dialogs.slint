@@ -1,0 +1,250 @@
+// ui/dialogs.slint
+//
+// In-app modals. Native file pickers stay native (rfd on the Rust side); the
+// confirm, colour picker and About dialogs are Slint so they follow the theme.
+
+import { AppTheme } from "themes/tokens.slint";
+import { AppInfo } from "model.slint";
+import { ColourSwatch } from "components/colour_swatch.slint";
+import { GhostButton, RippleButton } from "animations.slint";
+
+// ── Confirm ───────────────────────────────────────────────────────────────
+
+export component ConfirmDialog inherits Rectangle {
+    in property <string> title;
+    in property <string> message;
+    in property <string> confirm-label: "Confirm";
+    in property <string> cancel-label: "Cancel";
+    in property <bool> destructive: false;
+    callback confirmed();
+    callback cancelled();
+
+    background: #00000070;
+    opacity: root.visible ? 1.0 : 0.0;
+    animate opacity { duration: 180ms; easing: ease-out; }
+
+    // Swallow every click so nothing behind the modal is reachable.
+    TouchArea { }
+
+    Rectangle {
+        width: 400px;
+        height: card-stack.preferred-height + 40px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: AppTheme.radius-lg;
+        background: AppTheme.panel-bg;
+        border-width: 1px;
+        border-color: AppTheme.border-colour;
+
+        card-stack := VerticalLayout {
+            padding: 20px;
+            spacing: 12px;
+            alignment: start;
+
+            Text {
+                text: root.title;
+                font-size: 15px;
+                font-weight: 600;
+                color: AppTheme.text-strong;
+            }
+
+            Text {
+                text: root.message;
+                font-size: 13px;
+                color: AppTheme.text-colour;
+                wrap: word-wrap;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                RippleButton {
+                    label: root.cancel-label;
+                    btn-colour: AppTheme.surface;
+                    label-colour: AppTheme.text-colour;
+                    clicked => { root.cancelled(); }
+                }
+                RippleButton {
+                    label: root.confirm-label;
+                    btn-colour: root.destructive ? AppTheme.danger-colour : AppTheme.accent-colour;
+                    clicked => { root.confirmed(); }
+                }
+            }
+        }
+    }
+}
+
+// ── Colour picker ─────────────────────────────────────────────────────────
+
+export component ColourPickerDialog inherits Rectangle {
+    // Validated on the Rust side; the dialog never parses hex itself.
+    in property <color> picked-colour: #ffe27a;
+    in property <bool> hex-valid: true;
+    in-out property <string> hex;
+    in-out property <string> name;
+    callback hex-changed(string);
+    callback name-changed(string);
+    callback saved();
+    callback cancelled();
+
+    background: #00000070;
+    opacity: root.visible ? 1.0 : 0.0;
+    animate opacity { duration: 180ms; }
+
+    TouchArea { }
+
+    Rectangle {
+        width: 380px;
+        height: picker-stack.preferred-height + 40px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: AppTheme.radius-lg;
+        background: AppTheme.panel-bg;
+        border-width: 1px;
+        border-color: AppTheme.border-colour;
+
+        picker-stack := VerticalLayout {
+            padding: 20px;
+            spacing: 12px;
+            alignment: start;
+
+            Text {
+                text: "Custom highlight colour";
+                font-size: 15px;
+                font-weight: 600;
+                color: AppTheme.text-strong;
+            }
+
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: start;
+                ColourSwatch { swatch-colour: root.picked-colour; swatch-name: "preview"; swatch-size: 44px; }
+
+                VerticalLayout {
+                    spacing: 6px;
+                    alignment: start;
+
+                    Rectangle {
+                        height: 30px;
+                        width: 140px;
+                        border-radius: AppTheme.radius-sm;
+                        background: AppTheme.input-bg;
+                        border-width: 1px;
+                        border-color: root.hex-valid ? AppTheme.border-colour : AppTheme.danger-colour;
+
+                        hex-input := TextInput {
+                            x: 8px;
+                            width: parent.width - 16px;
+                            height: parent.height;
+                            text: root.hex;
+                            font-size: 13px;
+                            color: AppTheme.editor-text;
+                            single-line: true;
+                            vertical-alignment: center;
+                            edited => { root.hex-changed(self.text); }
+                        }
+                    }
+
+                    Rectangle {
+                        height: 30px;
+                        width: 140px;
+                        border-radius: AppTheme.radius-sm;
+                        background: AppTheme.input-bg;
+                        border-width: 1px;
+                        border-color: AppTheme.border-colour;
+
+                        TextInput {
+                            x: 8px;
+                            width: parent.width - 16px;
+                            height: parent.height;
+                            text: root.name;
+                            font-size: 13px;
+                            color: AppTheme.editor-text;
+                            single-line: true;
+                            vertical-alignment: center;
+                            edited => { root.name-changed(self.text); }
+                        }
+                    }
+                }
+            }
+
+            Text {
+                text: root.hex-valid
+                    ? "Hex, 3 / 6 / 8 digits, with or without #."
+                    : "That is not a colour.";
+                color: root.hex-valid ? AppTheme.text-muted : AppTheme.danger-colour;
+                font-size: 11px;
+            }
+
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: end;
+                RippleButton {
+                    label: "Cancel";
+                    btn-colour: AppTheme.surface;
+                    label-colour: AppTheme.text-colour;
+                    clicked => { root.cancelled(); }
+                }
+                RippleButton {
+                    label: "Add";
+                    enabled: root.hex-valid;
+                    clicked => { root.saved(); }
+                }
+            }
+        }
+    }
+}
+
+// ── About ─────────────────────────────────────────────────────────────────
+
+export component AboutDialog inherits Rectangle {
+    in property <AppInfo> info;
+    callback dismissed();
+
+    background: #00000070;
+    opacity: root.visible ? 1.0 : 0.0;
+    animate opacity { duration: 180ms; }
+
+    TouchArea { clicked => { root.dismissed(); } }
+
+    Rectangle {
+        width: 420px;
+        height: about-stack.preferred-height + 40px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: AppTheme.radius-lg;
+        background: AppTheme.panel-bg;
+        border-width: 1px;
+        border-color: AppTheme.border-colour;
+
+        about-stack := VerticalLayout {
+            padding: 22px;
+            spacing: 8px;
+            alignment: start;
+
+            Text {
+                text: root.info.name;
+                font-size: 18px;
+                font-weight: 700;
+                color: AppTheme.text-strong;
+            }
+            Text { text: "Version " + root.info.version; font-size: 12px; color: AppTheme.text-muted; }
+            Text { text: "Renderer: " + root.info.slint-backend; font-size: 11px; color: AppTheme.text-muted; }
+            Text { text: "Data: " + root.info.data-dir; font-size: 11px; color: AppTheme.text-muted; wrap: word-wrap; }
+
+            Rectangle { height: 8px; }
+
+            Text {
+                text: "Pure Rust and Slint. No HTML, no JavaScript, no web engine.";
+                font-size: 12px;
+                color: AppTheme.text-colour;
+                wrap: word-wrap;
+            }
+
+            HorizontalLayout {
+                alignment: end;
+                RippleButton { label: "Close"; clicked => { root.dismissed(); } }
+            }
+        }
+    }
+}

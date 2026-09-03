@@ -1,0 +1,573 @@
+// ui/app.slint
+//
+// The root window. Three things live here:
+//
+//   1. The 29-method Rust <-> Slint API (see the API section below).
+//   2. The theme entry points (light + dark), implemented as `public
+//      function`s because they run Slint-side and are *called by* Rust.
+//      A Slint `callback` would be the wrong direction.
+//   3. The layout, which wires the panels to those callbacks.
+//
+// Nothing in this file does arithmetic on strings: every label the UI shows
+// arrives pre-formatted from Rust.
+
+import { AppTheme } from "themes/tokens.slint";
+import { LightTheme } from "themes/light.slint";
+import { DarkTheme } from "themes/dark.slint";
+
+import { LiquidBackground, Toast } from "animations.slint";
+import { Editor } from "editor.slint";
+import { ToolBar } from "toolbar.slint";
+import { Sidebar } from "sidebar.slint";
+import { FindBar } from "find_bar.slint";
+import { ExtractPanel } from "extract.slint";
+import { StatusBar } from "status_bar.slint";
+import { TabBar } from "components/tab_bar.slint";
+import { ConfirmDialog, ColourPickerDialog, AboutDialog } from "dialogs.slint";
+
+import {
+    AppInfo,
+    ColourEntry,
+    EditorLineData,
+    HighlightStats,
+    LoadedFileData,
+    NoteData,
+    NoteMetadataData,
+    SessionData,
+    SettingsData,
+    StatusData,
+    TabData,
+    WindowStateData
+} from "model.slint";
+
+export component AppWindow inherits Window {
+    title: root.window-title;
+    background: AppTheme.window-bg;
+    // Window + taskbar icon (the generated brand mark). The installer's
+    // shortcut icon comes from ui/assets/app.ico, built from the same art.
+    icon: @image-url("assets/logo.png");
+    // Slint 1.6: a Window cannot set both size and min-size. `preferred-*`
+    // gives the initial size while letting the OS resize the window — and
+    // the content stretches with it (a fixed `width:` binding was freezing
+    // the UI at 1200px inside a maximised window).
+    preferred-width: 1200px;
+    preferred-height: 800px;
+
+    // NOTE: Slint 1.6's Window has no `close-requested` interception; the
+    // unsaved-changes check runs from the custom close button (`close-window`).
+
+    // ════════════════════════════════════════════════════════════════════
+    //  STATE MIRROR — written by Rust, read by the markup
+    // ════════════════════════════════════════════════════════════════════
+
+    in-out property <string> window-title: "NotePad Pro";
+    in-out property <[TabData]> tabs;
+    in-out property <int> active-tab: 0;
+    in-out property <[EditorLineData]> lines;
+    // Character count of the longest document line (wrap-off viewport size).
+    in-out property <int> max-line-len: 0;
+    // The whole document text, two-way with the editor's TextInput.
+    in-out property <string> doc-text: "";
+    // Renderer-measured editor metrics (read by Rust for overlay geometry).
+    // No defaults: the bindings below are the sole source.
+    in-out property <length> line-pitch;
+    in-out property <length> editor-char-w;
+    in-out property <length> editor-view-w;
+    // Cursor wash geometry, computed by Rust.
+    in-out property <length> cursor-y: 0px;
+    in-out property <length> cursor-h: 0px;
+    in-out property <bool> document-empty: true;
+    // Programmatic editor focus: Rust sets the row and bumps the token.
+    in-out property <int> editor-focus-line: -1;
+    in-out property <int> editor-focus-token: 0;
+
+    in-out property <int> cursor-line: 0;
+    in-out property <int> cursor-col: 0;
+    in-out property <int> focus-request: -1;
+
+    in-out property <float> zoom: 1.0;
+    in-out property <bool> word-wrap: true;
+    in-out property <string> font-family: "Consolas";
+    in-out property <length> base-font-size: 14px;
+    in-out property <bool> animations: true;
+    in-out property <float> blob-phase: 0.0;
+    in-out property <string> theme: "light";
+    // True once the Win32 Rich Edit child has been parented over the editor
+    // region; the Slint surface then hides (it stays as the fallback).
+    in-out property <bool> native-editor: false;
+    in-out property <bool> native-frame: true;
+
+    in-out property <bool> sidebar-open: false;
+    in-out property <bool> find-open: false;
+    in-out property <bool> replace-open: false;
+    in-out property <bool> extract-open: false;
+    in-out property <bool> can-undo: false;
+    in-out property <bool> can-redo: false;
+
+    in-out property <[ColourEntry]> palette;
+    in-out property <[ColourEntry]> extract-entries;
+    in-out property <[NoteMetadataData]> notes;
+    in-out property <int> selected-note-id: -1;
+    in-out property <string> note-query;
+    in-out property <string> note-sort: "modified";
+    in-out property <string> note-count-label: "0 notes";
+
+    in-out property <string> find-query;
+    in-out property <string> find-replacement;
+    in-out property <string> find-counter: "No matches";
+    in-out property <int> find-total: 0;
+    in-out property <bool> find-case: false;
+    in-out property <bool> find-word: false;
+
+    in-out property <string> extract-preview;
+    in-out property <string> extract-label: "0 lines · 0 chars";
+    in-out property <bool> extract-grouped: false;
+
+    in-out property <StatusData> status;
+    in-out property <AppInfo> app-meta;
+
+    // Toast
+    in-out property <string> toast-message;
+    in-out property <bool> toast-visible: false;
+
+    // Modals
+    in-out property <bool> show-confirm: false;
+    in-out property <string> confirm-title;
+    in-out property <string> confirm-message;
+    in-out property <string> confirm-label: "Confirm";
+    in-out property <bool> confirm-destructive: false;
+
+    in-out property <bool> show-colour-picker: false;
+    in-out property <color> picker-colour: #ffe27a;
+    in-out property <bool> picker-hex-valid: true;
+    in-out property <string> picker-hex: "#ffe27a";
+    in-out property <string> picker-name: "Custom";
+
+    in-out property <bool> show-about: false;
+
+    // ════════════════════════════════════════════════════════════════════
+    //  API — 29 METHODS (Rust implements these)
+    // ════════════════════════════════════════════════════════════════════
+
+    // ── Meta (2) ──────────────────────────────────────────────────────────
+    callback ping() -> string;
+    callback app-info() -> AppInfo;
+
+    // ── Settings (7) ──────────────────────────────────────────────────────
+    callback get-settings() -> SettingsData;
+    callback save-settings(SettingsData);
+    callback update-settings(string, string);
+    callback get-recent-files() -> [string];
+    callback clear-recent-files();
+    callback save-session();
+    callback load-session() -> SessionData;
+
+    // ── Files (8) ─────────────────────────────────────────────────────────
+    callback open-file-dialog() -> [string];
+    callback load-file(string) -> LoadedFileData;
+    callback save-file(string, string, string, string);
+    callback save-file-as(string, string) -> string;
+    callback file-exists(string) -> bool;
+    callback save-extracted-text(string, string);
+    callback set-startup-files([string]);
+    callback get-startup-files() -> [string];
+
+    // ── Notes (5) ─────────────────────────────────────────────────────────
+    callback get-notes-list(string) -> [NoteMetadataData];
+    callback get-note(int) -> NoteData;
+    callback save-note(NoteData) -> int;
+    callback delete-note(int);
+    callback toggle-pin(int) -> bool;
+
+    // ── Highlights (3) ────────────────────────────────────────────────────
+    callback highlight-stats() -> HighlightStats;
+    callback extract-by-colour([string], bool) -> string;
+    callback copy-to-clipboard(string) -> bool;
+
+    // ── Window (4) ────────────────────────────────────────────────────────
+    callback window-state() -> WindowStateData;
+    callback minimise();
+    callback toggle-maximise();
+    callback close-window();
+
+    // ════════════════════════════════════════════════════════════════════
+    //  UI ACTION CALLBACKS — internal wiring for the markup above.
+    //  These are not part of the 29-method API; they exist so that buttons
+    //  and keys can reach the same Rust code paths the API uses.
+    // ════════════════════════════════════════════════════════════════════
+
+    callback new-file();
+    callback open-file();
+    callback save-current();
+    callback save-as();
+    callback do-undo();
+    callback do-redo();
+    callback list-type-chosen(string);
+    callback indent-chosen(bool);
+    callback highlight-chosen(string);
+    callback custom-colour-requested();
+    callback find-panel-requested(bool);
+    callback extract-panel-requested();
+    callback sidebar-changed(bool);
+    callback word-wrap-changed(bool);
+    callback theme-changed(string);
+    callback zoom-changed(float);
+    callback about-requested();
+
+    callback tab-chosen(int);
+    callback tab-closed(int);
+    callback tab-new();
+
+    callback doc-edited(string);
+    callback caret-point(length, length);
+    callback checkbox-toggled(int);
+    callback key-command(string, bool, bool) -> bool;
+    callback tab-pressed(bool);
+
+    callback note-chosen(int);
+    callback note-pinned(int);
+    callback note-deleted(int);
+    callback note-new();
+    callback note-query-changed(string);
+    callback note-sort-changed(string);
+
+    callback find-query-changed(string);
+    callback find-replacement-changed(string);
+    callback find-next();
+    callback find-prev();
+    callback find-replace-one();
+    callback find-replace-all();
+    callback find-case-toggled();
+    callback find-word-toggled();
+    callback find-closed();
+
+    callback extract-colour-toggled(string, bool);
+    callback extract-order-changed(bool);
+    callback extract-copy();
+    callback extract-export();
+    callback extract-open-in-tab();
+    callback extract-closed();
+
+    callback confirm-accepted();
+    callback confirm-rejected();
+    callback colour-hex-changed(string);
+    callback colour-name-changed(string);
+    callback colour-saved();
+    callback colour-cancelled();
+    callback about-dismissed();
+    callback move-window();
+
+    // ════════════════════════════════════════════════════════════════════
+    //  PUBLIC FUNCTIONS — Rust calls these (Slint implements them)
+    // ════════════════════════════════════════════════════════════════════
+
+    public function apply-light-theme() { LightTheme.apply(); }
+    public function apply-dark-theme()  { DarkTheme.apply(); }
+
+    public function show-toast(message: string) {
+        root.toast-message = message;
+        root.toast-visible = true;
+    }
+
+    public function hide-toast() {
+        root.toast-visible = false;
+    }
+
+    public function focus-line(index: int) {
+        root.focus-request = index;
+        root.editor-focus-line = index;
+        root.editor-focus-token += 1;
+    }
+
+    public function reveal-line(index: int) {
+        editor.reveal-y(root.cursor-y);
+    }
+
+    /// Move the native caret to a UTF-8 byte offset (see Editor.place-caret).
+    public function place-caret(offset: int) {
+        editor.place-caret(offset);
+    }
+
+    // Renderer-measured editor metrics, read by Rust for the overlay
+    // geometry (band y offsets, caret line/col from pixel points).
+    line-pitch: editor.line-pitch;
+
+    // Window-space geometry of the editor region, read by the Win32 Rich
+    // Edit embedding so the native child sits exactly over this area. The
+    // layout is a strict stack (titlebar + toolbar + border, sidebar, editor,
+    // statusbar) so the rect follows from the shared tokens.
+    out property <length> editor-gx: root.sidebar-open ? AppTheme.sidebar-width : 0px;
+    out property <length> editor-gy:
+        AppTheme.titlebar-height + AppTheme.toolbar-height + 1px;
+    out property <length> editor-gw:
+        root.width - (root.sidebar-open ? AppTheme.sidebar-width : 0px);
+    out property <length> editor-gh:
+        root.height - editor-gy - AppTheme.statusbar-height;
+    editor-char-w: editor.char-w;
+    editor-view-w: editor.view-w;
+
+    // ════════════════════════════════════════════════════════════════════
+    //  LAYOUT
+    // ════════════════════════════════════════════════════════════════════
+
+    VerticalLayout {
+        spacing: 0px;
+
+        // ── Custom titlebar (only in frameless mode) ──────────────────────
+        if !root.native-frame : Rectangle {
+            height: AppTheme.titlebar-height;
+            background: AppTheme.toolbar-bg;
+            clip: true;
+
+            // Drag region. Declared first so the window buttons, which are
+            // later siblings, sit on top of it and stay clickable.
+            TouchArea {
+                mouse-cursor: move;
+                pointer-event(event) => {
+                    if (event.kind == PointerEventKind.down) { root.move-window(); }
+                }
+                // Double-click on the title bar toggles maximise.
+                double-clicked => { root.toggle-maximise(); }
+            }
+
+            HorizontalLayout {
+                padding-left: 12px;
+                spacing: 8px;
+                alignment: start;
+
+                Text {
+                    text: root.window-title;
+                    font-size: 12px;
+                    color: AppTheme.text-muted;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+
+                Rectangle {
+                    width: 46px;
+                    height: parent.height;
+                    background: min-touch.has-hover ? AppTheme.surface : transparent;
+                    Text { text: "─"; color: AppTheme.text-muted;
+                           horizontal-alignment: center; vertical-alignment: center; }
+                    min-touch := TouchArea { mouse-cursor: pointer;
+                                clicked => { root.minimise(); } }
+                }
+                Rectangle {
+                    width: 46px;
+                    height: parent.height;
+                    background: max-touch.has-hover ? AppTheme.surface : transparent;
+                    Text { text: "❐"; color: AppTheme.text-muted;
+                           horizontal-alignment: center; vertical-alignment: center; }
+                    max-touch := TouchArea { mouse-cursor: pointer;
+                                clicked => { root.toggle-maximise(); } }
+                }
+                Rectangle {
+                    width: 46px;
+                    height: parent.height;
+                    background: close-touch.has-hover ? AppTheme.danger-colour : transparent;
+                    animate background { duration: AppTheme.fast; }
+                    Text { text: "✕";
+                           color: close-touch.has-hover ? AppTheme.accent-text : AppTheme.text-muted;
+                           horizontal-alignment: center; vertical-alignment: center; }
+                    close-touch := TouchArea { mouse-cursor: pointer;
+                                clicked => { root.close-window(); } }
+                }
+            }
+        }
+
+        // ── Tabs ──────────────────────────────────────────────────────────
+        TabBar {
+            tabs: root.tabs;
+            active-index: root.active-tab;
+            tab-clicked(index) => { root.tab-chosen(index); }
+            tab-closed(index) => { root.tab-closed(index); }
+            new-tab => { root.tab-new(); }
+        }
+
+        // Hairline so the tab strip, toolbar and body read as distinct.
+        Rectangle { height: 1px; background: AppTheme.border-colour; }
+
+        // ── Toolbar ───────────────────────────────────────────────────────
+        ToolBar {
+            // Above the body so the (unclipped) theme dropdown can overlap it.
+            z: 20;
+            palette: root.palette;
+            themes: ["light", "dark"];
+            theme: root.theme;
+            sidebar-open: root.sidebar-open;
+            find-open: root.find-open;
+            extract-open: root.extract-open;
+            word-wrap: root.word-wrap;
+            can-undo: root.can-undo;
+            can-redo: root.can-redo;
+
+            new-file => { root.new-file(); }
+            open-file => { root.open-file(); }
+            save-file => { root.save-current(); }
+            save-as => { root.save-as(); }
+            do-undo => { root.do-undo(); }
+            do-redo => { root.do-redo(); }
+            list-type-chosen(kind) => { root.list-type-chosen(kind); }
+            indent-chosen(indent) => { root.indent-chosen(indent); }
+            highlight-chosen(key) => { root.highlight-chosen(key); }
+            open-custom-colour => { root.custom-colour-requested(); }
+            find-opened => { root.find-panel-requested(false); }
+            replace-opened => { root.find-panel-requested(true); }
+            extract-opened => { root.extract-panel-requested(); }
+            sidebar-toggled => { root.sidebar-changed(!root.sidebar-open); }
+            word-wrap-toggled => { root.word-wrap-changed(!root.word-wrap); }
+            theme-chosen(name) => { root.theme-changed(name); }
+            zoom-step(delta) => { root.zoom-changed(delta); }
+            about-opened => { root.about-requested(); }
+        }
+
+        // ── Body: sidebar + editor ────────────────────────────────────────
+        HorizontalLayout {
+            spacing: 0px;
+            vertical-stretch: 1;
+
+            Sidebar {
+                width: root.sidebar-open ? AppTheme.sidebar-width : 0px;
+                notes: root.notes;
+                selected-id: root.selected-note-id;
+                query: root.note-query;
+                sort: root.note-sort;
+                count-label: root.note-count-label;
+                animate width { duration: root.animations ? 320ms : 0ms;
+                                easing: cubic-bezier(0.65, 0, 0.35, 1); }
+
+                query-changed(q) => { root.note-query-changed(q); }
+                note-clicked(id) => { root.note-chosen(id); }
+                pin-clicked(id) => { root.note-pinned(id); }
+                delete-clicked(id) => { root.note-deleted(id); }
+                new-note => { root.note-new(); }
+                sort-chosen(s) => { root.note-sort-changed(s); }
+                close => { root.sidebar-changed(false); }
+            }
+
+            // Editor column
+            Rectangle {
+                horizontal-stretch: 1;
+                clip: true;
+
+                // Ambient background for an empty document.
+                LiquidBackground {
+                    phase: root.blob-phase;
+                    motion-enabled: root.animations && root.document-empty;
+                    visible: root.animations && root.document-empty;
+                }
+
+                editor := Editor {
+                    width: 100%;
+                    height: 100%;
+                    visible: !root.native-editor;
+                    lines: root.lines;
+                    max-line-len: root.max-line-len;
+                    doc-text <=> root.doc-text;
+                    cursor-line: root.cursor-line;
+                    zoom: root.zoom;
+                    wrapping: root.word-wrap;
+                    font-family: root.font-family;
+                    base-font-size: root.base-font-size;
+                    motion-enabled: root.animations;
+                    cursor-y: root.cursor-y;
+                    cursor-h: root.cursor-h;
+
+                    doc-edited(text) => { root.doc-edited(text); }
+                    caret-point(x, y) => { root.caret-point(x, y); }
+                    key-command(text, ctrl, shift) => { root.key-command(text, ctrl, shift) }
+                    checkbox-toggled(index) => { root.checkbox-toggled(index); }
+                    tab-pressed(deeper) => { root.tab-pressed(deeper); }
+                }
+
+            }
+
+            // Extract panel docks beside the editor (mirroring the Notes
+            // sidebar on the left) instead of floating over the document.
+            ExtractPanel {
+                width: root.extract-open ? 330px : 0px;
+                visible: self.width > 0px;
+                animate width { duration: root.animations ? 280ms : 0ms;
+                                easing: cubic-bezier(0.65, 0, 0.35, 1); }
+
+                colour-entries: root.extract-entries;
+                preview-text: root.extract-preview;
+                preview-label: root.extract-label;
+                group-by-colour: root.extract-grouped;
+                motion-enabled: root.animations;
+
+                colour-toggled(key, active) => { root.extract-colour-toggled(key, active); }
+                order-changed(grouped) => { root.extract-order-changed(grouped); }
+                copy-selected => { root.extract-copy(); }
+                export-selected => { root.extract-export(); }
+                open-in-tab => { root.extract-open-in-tab(); }
+                close => { root.extract-closed(); }
+            }
+        }
+
+        // ── Find & replace ────────────────────────────────────────────────
+        FindBar {
+            visible: root.find-open;
+            query: root.find-query;
+            replacement: root.find-replacement;
+            counter: root.find-counter;
+            match-total: root.find-total;
+            case-sensitive: root.find-case;
+            whole-word: root.find-word;
+            show-replace: root.replace-open;
+
+            query-changed(q) => { root.find-query-changed(q); }
+            replacement-changed(r) => { root.find-replacement-changed(r); }
+            next-match => { root.find-next(); }
+            prev-match => { root.find-prev(); }
+            replace-one => { root.find-replace-one(); }
+            replace-all => { root.find-replace-all(); }
+            case-toggled => { root.find-case-toggled(); }
+            word-toggled => { root.find-word-toggled(); }
+            close => { root.find-closed(); }
+        }
+
+        // ── Status bar ────────────────────────────────────────────────────
+        StatusBar { status: root.status; }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  OVERLAYS
+    // ════════════════════════════════════════════════════════════════════
+
+    ConfirmDialog {
+        visible: root.show-confirm;
+        title: root.confirm-title;
+        message: root.confirm-message;
+        confirm-label: root.confirm-label;
+        destructive: root.confirm-destructive;
+        confirmed => { root.confirm-accepted(); }
+        cancelled => { root.confirm-rejected(); }
+    }
+
+    ColourPickerDialog {
+        visible: root.show-colour-picker;
+        picked-colour: root.picker-colour;
+        hex-valid: root.picker-hex-valid;
+        hex: root.picker-hex;
+        name: root.picker-name;
+        hex-changed(value) => { root.colour-hex-changed(value); }
+        name-changed(value) => { root.colour-name-changed(value); }
+        saved => { root.colour-saved(); }
+        cancelled => { root.colour-cancelled(); }
+    }
+
+    AboutDialog {
+        visible: root.show-about;
+        info: root.app-meta;
+        dismissed => { root.about-dismissed(); }
+    }
+
+    Toast {
+        visible: root.toast-visible;
+        message: root.toast-message;
+        z: 70;
+        x: (parent.width - self.width) / 2;
+        y: root.toast-visible ? parent.height - self.height - 24px : parent.height + 16px;
+    }
+}

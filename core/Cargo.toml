@@ -1,0 +1,30 @@
+[package]
+name = "notepad-pro-core"
+description = "Pure logic for NotePad Pro: document model, files, SQLite notes, highlighting"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+name = "notepad_pro_core"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+chardet.workspace = true
+dirs.workspace = true
+encoding_rs.workspace = true
+r2d2.workspace = true
+r2d2_sqlite.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tinyvec.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

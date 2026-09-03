@@ -1,0 +1,63 @@
+// ui/components/colour_swatch.slint
+//
+// A round colour button with a hover tooltip. Used by the toolbar palette and
+// by the extract panel.
+
+import { AppTheme } from "../themes/tokens.slint";
+
+export component ColourSwatch inherits Rectangle {
+    in property <color> swatch-colour;
+    in property <string> swatch-name;
+    in property <bool> active: false;
+    in property <bool> enabled: true;
+    in property <length> swatch-size: 24px;
+    callback clicked();
+
+    width: root.swatch-size;
+    height: root.swatch-size;
+    border-radius: root.swatch-size / 2;
+    background: root.swatch-colour;
+    border-width: root.active ? 2px : 1px;
+    border-color: root.active ? AppTheme.accent-colour : AppTheme.border-colour;
+    opacity: root.enabled ? 1.0 : 0.4;
+
+    animate border-width { duration: AppTheme.fast; easing: ease-out; }
+    animate border-color { duration: AppTheme.fast; easing: ease-out; }
+
+    // Selection ring
+    if root.active : Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: (parent.width + 6px) / 2;
+        border-width: 1px;
+        border-color: AppTheme.accent-colour;
+        animate opacity { duration: AppTheme.normal; }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    if touch.has-hover : Rectangle {
+        x: (root.width - label.preferred-width - 12px) / 2;
+        y: -27px;
+        width: label.preferred-width + 12px;
+        height: 22px;
+        border-radius: AppTheme.radius-sm;
+        background: AppTheme.tooltip-bg;
+        // Above everything else in the toolbar so the tooltip is never clipped.
+        z: 60;
+
+        label := Text {
+            text: root.swatch-name;
+            color: AppTheme.tooltip-text;
+            font-size: 11px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
