@@ -35,7 +35,7 @@ mod imp {
 
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::{BOOL, HWND, LPARAM, LRESULT, TRUE, WPARAM};
-    use windows::Win32::System::LibraryLoader::LoadLibraryW;
+    use windows::Win32::System::LibraryLoader::{GetModuleHandleW, LoadLibraryW};
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VIRTUAL_KEY};
     use windows::Win32::UI::WindowsAndMessaging::*;
 
