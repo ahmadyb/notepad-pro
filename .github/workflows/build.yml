@@ -52,9 +52,22 @@ jobs:
           # rustc compiled heavy deps in parallel; cap jobs so the release
           # profile (lto, codegen-units=1) stays inside runner memory.
           CARGO_BUILD_JOBS: 2
+        timeout-minutes: 40
         run: |
-          cargo build --release --verbose *>&1 | Tee-Object -FilePath cargo.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # No pipeline: earlier runs died silently (exit 1, cargo.log ending
+          # mid-compile) with `cargo *>&1 | Tee-Object`. Redirect to the log
+          # file directly, report the exit code, and retry once on a silent
+          # death so a one-off runner kill cannot sink the build.
+          cargo build --release *> cargo.log
+          $code = $LASTEXITCODE
+          if ($code -ne 0 -and -not (Select-String -Path cargo.log -Pattern "^error" -Quiet)) {
+            Write-Output "SILENT-DEATH code=$code - retrying once"
+            cargo build --release *>> cargo.log
+            $code = $LASTEXITCODE
+          }
+          Write-Output "BUILD-EXIT=$code"
+          Get-Content cargo.log -Tail 30
+          exit $code
         shell: pwsh
 
       - name: Test
