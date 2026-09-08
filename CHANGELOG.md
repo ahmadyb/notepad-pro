@@ -185,6 +185,31 @@ reported bugs are fixed.
 8. New documents save as `.txt` by default (Text filter first in the Save
    dialog; `.npro` remains an opt-in filter).
 
+### Fixed (Windows field report — round 4, 2026-09-08)
+1. **Highlight landed on the wrong line.** The colour band was drawn from a
+   hard-coded estimate of the rendered row height and keyed off the selection
+   *anchor* rather than the caret, so a drag-select coloured the line above.
+   The band now uses the exact byte offsets Slint reports for the caret
+   (`cursor-position-byte-offset` / `anchor-position-byte-offset`, resolved
+   through the same `offset_to_line_col` the status bar uses), and its height
+   is bound to a hidden per-line measuring `Text` with the identical font,
+   wrap and width — so it occupies precisely the row the text occupies. No
+   font size, line height, or estimate remains in the drawing path.
+2. **List markers (number/bullet/checkbox) sat behind the text and drifted
+   out of sync.** Markers are now a column rendered *above* the text layer,
+   the text column starts at a guaranteed-clear gutter (`gutter + zoom·34px`),
+   and each marker row is height-bound to the same hidden measurer as its text
+   line, so line N's marker sits exactly on line N's text at any zoom or font.
+3. Deleted the entire Rust-side geometry estimator (144 lines plus its tests)
+   that produced the guesses behind bugs 1 and 2; drift is now structurally
+   impossible rather than tuned away.
+4. **`app.slint` duplicated property binding** — `editor-caret-offset` and
+   `editor-anchor-offset` were declared with a `: 0` default *and* re-bound in
+   the component body, which Slint rejects (`Duplicated property binding`) and
+   `build.rs` panics on. This silently broke every Windows build after the
+   overlay rework; the declarations now have no default, matching
+   `line-pitch`/`editor-char-w`/`editor-view-w`.
+
 ### Changed
 - Dropped `tokio` in favour of a synchronous model with a `std::thread`
   autosave loop (see `DEVIATIONS.md`).
