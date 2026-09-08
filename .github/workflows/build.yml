@@ -23,49 +23,22 @@ jobs:
       - name: Cross-file contract check
         run: python3 tools/check_consistency.py
 
-  # ── Fast compile verification on a pool that is not being killed ───────
-  # The windows pool started silently killing cargo mid-compile (2026-09-08);
-  # `cargo check` on ubuntu still runs every build.rs (including slint-build,
-  # which compiles all .slint files) and type-checks the whole workspace, so
-  # code regressions surface here even while the windows build is flaky.
-  check:
-    name: Compile check (ubuntu)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.89
-      - name: System libs for Slint backend build scripts
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq libxkbcommon-dev libfontconfig1-dev libfreetype-dev libwayland-dev libx11-xcb-dev libudev-dev pkg-config
-      - name: cargo check (workspace)
-        run: cargo check --workspace --verbose 2>&1 | tee check.log; exit ${pipestatus[0]}
-      - name: Surface check errors
-        if: failure()
-        run: |
-          grep -E "^error" -A 8 check.log | head -80 | sed 's/^/::error::/'
-          tail -25 check.log | sed 's/^/::error::TAIL /'
-          exit 0
-
   # ── Windows build, tests, installer ─────────────────────────────────────
   build:
-    name: windows-latest
+    name: windows-2022
     needs: consistency
-    # windows-latest (2025 pool) started silently killing cargo mid-compile
-    # (exit 1, no error output, random stop points) on 2026-09-08; the 2022
-    # image is a different pool and was unaffected.
+    # Pinned to windows-2022 (VS 2022) rather than windows-latest: the latter
+    # migrated to the VS 2026 image, which is a moving target for the MSVC
+    # toolchain. 2022 is stable through ~2028.
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
-      - name: Override the in-repo MSRV pin for CI
-        # Pinned, not floating `stable`: a newly published stable coincided
-        # with silent mid-compile runner kills (cargo died with no error
-        # output while deps compiled). Reproduce with a known-good compiler.
+      - name: Pin the toolchain for CI
+        # Pinned, not floating `stable`, so builds are reproducible against a
+        # known-good compiler regardless of what stable resolves to that day.
         run: |
           rustup toolchain install 1.89 --profile minimal
           rustup override set 1.89

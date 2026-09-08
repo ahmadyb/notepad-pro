@@ -75,8 +75,10 @@ export component AppWindow inherits Window {
     in-out property <length> editor-view-w;
     // Cursor wash geometry, computed by Rust.
     // Exact caret/selection byte offsets from the native editor surface.
-    out property <int> editor-caret-offset: 0;
-    out property <int> editor-anchor-offset: 0;
+    // No defaults: the bindings below (editor-caret-offset: editor.caret-offset)
+    // are the sole source, exactly like line-pitch above.
+    out property <int> editor-caret-offset;
+    out property <int> editor-anchor-offset;
     in-out property <bool> document-empty: true;
     // Programmatic editor focus: Rust sets the row and bumps the token.
     in-out property <int> editor-focus-line: -1;
