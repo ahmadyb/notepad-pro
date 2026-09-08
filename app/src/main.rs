@@ -24,8 +24,11 @@ use notepad_pro::state::AppState;
 use notepad_pro::sync;
 use notepad_pro::ui::AppWindow;
 
+#[cfg(test)]
 use notepad_pro_core::config::session::SessionStore;
-use notepad_pro_core::config::settings::{db_path, session_path, settings_path, Settings};
+#[cfg(test)]
+use notepad_pro_core::config::settings::session_path;
+use notepad_pro_core::config::settings::{db_path, settings_path, Settings};
 use notepad_pro_core::db::notes::NotesDb;
 
 /// Command line interface.
@@ -141,17 +144,12 @@ fn main() -> Result<()> {
                 return;
             };
             let guard = callbacks::lock(&st);
-            let geom = sync::compute_geom(&win, &guard);
-            let ys: Vec<f32> = geom.iter().take(14).map(|g| g.0).collect();
-            let hs: Vec<f32> = geom.iter().take(14).map(|g| g.1).collect();
             let dump = serde_json::json!({
                 "pitch": win.get_line_pitch(),
                 "char_w": win.get_editor_char_w(),
                 "view_w": win.get_editor_view_w(),
                 "zoom": guard.settings.zoom,
                 "wrap": guard.settings.word_wrap,
-                "y": ys,
-                "h": hs,
             });
             let _ = std::fs::write("geodump.json", serde_json::to_string(&dump).unwrap_or_default());
         });

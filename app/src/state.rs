@@ -242,6 +242,26 @@ impl AppState {
         self.cursor.col = self.cursor.col.min(cols);
     }
 
+    /// Convert a UTF-8 byte offset in the joined document text into
+    /// (line, char-column), clamped into the document. Exact — no geometry.
+    pub fn offset_to_line_col(&self, offset: usize) -> (usize, usize) {
+        let mut remaining = offset;
+        for (i, line) in self.doc().lines.iter().enumerate() {
+            let bytes = line.text.len();
+            if remaining <= bytes {
+                let mut at = remaining;
+                while !line.text.is_char_boundary(at) {
+                    at -= 1;
+                }
+                let col = line.text[..at].chars().count();
+                return (i, col);
+            }
+            remaining -= bytes + 1; // the '\n'
+        }
+        let last = self.doc().line_count().saturating_sub(1);
+        (last, self.doc().lines.get(last).map(|l| l.char_len()).unwrap_or(0))
+    }
+
     /// Inclusive line range covered by the current selection.
     pub fn selection_range(&self) -> (usize, usize) {
         let last = self.doc().line_count().saturating_sub(1);

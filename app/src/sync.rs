@@ -4,7 +4,7 @@
 //! `sync_editor` is the expensive one (it rebuilds the line model and so
 //! recreates every row), so the typing path deliberately avoids it.
 
-use slint::{ComponentHandle, Model, ModelRc, VecModel};
+use slint::{Model, ModelRc, VecModel};
 
 use crate::convert;
 use crate::state::AppState;
@@ -46,19 +46,9 @@ pub fn sync_editor(window: &AppWindow, state: &AppState) {
         .unwrap_or(0);
     window.set_max_line_len(max_len as i32);
 
-    // Overlay geometry from renderer-measured metrics, then the row model.
-    let geom = compute_geom(window, state);
-    for (row, g) in fresh.iter_mut().zip(geom.iter()) {
-        row.y_pos = g.0;
-        row.band_h = g.1;
-    }
+    // Overlay positioning lives entirely in Slint (measurer-driven
+    // VerticalLayouts), so Rust only ships the row model here.
     update_lines(window, fresh);
-
-    // Cursor-line wash.
-    if let Some(g) = geom.get(state.cursor.line) {
-        window.set_cursor_y(g.0);
-        window.set_cursor_h(g.1);
-    }
 
     // Document surface (two-way binding): push only when Rust changed the
     // text (file open, undo, replace-all) so the native caret survives
@@ -84,150 +74,6 @@ pub fn sync_editor(window: &AppWindow, state: &AppState) {
     window.set_animations(state.settings.animations);
     window.set_theme(state.settings.theme.as_str().into());
     window.set_native_frame(state.settings.native_frame);
-}
-
-/// Per-line overlay geometry: `(y, height)` in logical px. The line pitch is
-/// renderer-measured (two-line ruler in the editor); with wrapping on, each
-/// line's visual-line count comes from a greedy word-wrap simulation that
-/// mirrors the renderer: tokens pack onto a visual line until the next token
-/// (plus its space) no longer fits, and overlong tokens break mid-word. The
-/// available width is exactly the TextInput's: the content width minus the
-/// input's x inset (`gutter + zoom * 16px` in editor.slint).
-pub fn compute_geom(window: &AppWindow, state: &AppState) -> Vec<(f32, f32)> {
-    let pitch = window.get_line_pitch().max(1.0);
-    let char_w = window.get_editor_char_w();
-    let view_w = window.get_editor_view_w();
-    let zoom = state.settings.zoom;
-    let avail_chars = if state.settings.word_wrap && view_w > 1.0 && char_w > 0.1 {
-        ((view_w - input_x(zoom)) / char_w).max(1.0)
-    } else {
-        0.0
-    };
-    let mut out = Vec::with_capacity(state.doc().lines.len());
-    let mut y = 0.0f32;
-    for line in &state.doc().lines {
-        let vis = if avail_chars > 1.0 {
-            wrapped_visual_lines(&line.text, avail_chars)
-        } else {
-            1.0
-        };
-        let h = vis * pitch;
-        out.push((y, h));
-        y += h;
-    }
-    out
-}
-
-/// The TextInput's x inset in logical px; must mirror `editor.slint`.
-pub fn input_x(zoom: f32) -> f32 {
-    10.0 + zoom * 16.0
-}
-
-/// Greedy word-wrap visual-line count with a uniform monospace advance.
-///
-/// Mirrors the renderer's `word-wrap`: a token moves to the next visual line
-/// when it no longer fits (spaces are break opportunities and consume one
-/// cell); a token longer than a whole line breaks mid-word.
-pub fn wrapped_visual_lines(text: &str, avail: f32) -> f32 {
-    if avail <= 1.0 {
-        return 1.0;
-    }
-    let mut lines = 1.0f32;
-    let mut used = 0.0f32;
-    for (i, token) in text.split(' ').enumerate() {
-        let mut w = token.chars().count() as f32;
-        if i > 0 && w > 0.0 {
-            // The space is a break opportunity: if space+token do not fit,
-            // the token starts a fresh visual line (without the space).
-            if used > 0.0 && used + 1.0 + w > avail {
-                lines += 1.0;
-                used = 0.0;
-            } else {
-                used += 1.0;
-            }
-        }
-        loop {
-            let rem = avail - used;
-            if w <= rem + 1e-3 {
-                used += w;
-                break;
-            }
-            if used > 1e-3 {
-                // Continuation of an overlong token wraps to a new line.
-                lines += 1.0;
-                used = 0.0;
-            } else {
-                // Token longer than a full line: break mid-word.
-                w -= rem;
-                lines += 1.0;
-                used = 0.0;
-            }
-        }
-    }
-    lines
-}
-
-/// Character column at pixel `x` inside visual row `row_within` of `text`,
-/// using the same greedy packing as [`wrapped_visual_lines`]. Returns the
-/// UTF-8 *character* index (not byte index) into the line.
-pub fn col_at_point(text: &str, avail: f32, row_within: usize, x_chars: f32) -> usize {
-    let mut row = 0usize;
-    let mut row_start = 0usize;
-    let mut prev_row_start = 0usize;
-    let mut used = 0.0f32;
-    let mut chars = 0usize;
-    for (i, token) in text.split(' ').enumerate() {
-        let tw = token.chars().count();
-        if i > 0 && tw > 0 {
-            if used > 0.0 && used + 1.0 + tw as f32 > avail {
-                // The space stays at the (invisible) end of the previous row;
-                // the new visual row starts at the token itself.
-                prev_row_start = row_start;
-                row += 1;
-                row_start = chars + 1;
-                chars += 1;
-                used = 0.0;
-            } else {
-                used += 1.0;
-                chars += 1; // the space itself
-            }
-        }
-        let mut placed = 0usize;
-        while placed < tw {
-            let rem = (avail - used) as usize;
-            if tw - placed <= rem {
-                used += (tw - placed) as f32;
-                chars += tw - placed;
-                placed = tw;
-            } else if used > 1e-3 {
-                prev_row_start = row_start;
-                row += 1;
-                row_start = chars;
-                used = 0.0;
-            } else {
-                placed += rem;
-                chars += rem;
-                prev_row_start = row_start;
-                row += 1;
-                row_start = chars;
-                used = 0.0;
-            }
-        }
-        if row > row_within {
-            break;
-        }
-    }
-    let base = if row == row_within {
-        row_start
-    } else if row > row_within {
-        // Walked past the target row: it started where the next one took over.
-        prev_row_start
-    } else {
-        // x past the last visual row: clamp to the line end.
-        return text.chars().count();
-    };
-    let in_row = x_chars.round().max(0.0) as usize;
-    (base + in_row).min(text.chars().count())
 }
 
 /// Reconciles `fresh` against the live row model strictly in place.
@@ -367,45 +213,4 @@ pub fn focus_line(window: &AppWindow, index: usize) {
     window.set_editor_focus_line(index as i32);
     let token = window.get_editor_focus_token();
     window.set_editor_focus_token(token + 1);
-}
-
-#[cfg(test)]
-mod geom_tests {
-    use super::*;
-
-    #[test]
-    fn short_line_is_one_visual_line() {
-        assert_eq!(wrapped_visual_lines("hello world", 80.0), 1.0);
-    }
-
-    #[test]
-    fn words_that_do_not_fit_wrap_to_new_rows() {
-        // avail 10: "abcde abcde abcde" packs one token per visual row.
-        assert_eq!(wrapped_visual_lines("abcde abcde abcde", 10.0), 3.0);
-    }
-
-    #[test]
-    fn exact_fit_stays_on_one_line() {
-        assert_eq!(wrapped_visual_lines("abcde abcde", 11.0), 1.0);
-    }
-
-    #[test]
-    fn overlong_token_breaks_mid_word() {
-        // 10 chars over avail 4 -> rows of 4 + 4 + 2.
-        assert_eq!(wrapped_visual_lines("abcdefghij", 4.0), 3.0);
-    }
-
-    #[test]
-    fn empty_line_is_one_row() {
-        assert_eq!(wrapped_visual_lines("", 80.0), 1.0);
-    }
-
-    #[test]
-    fn col_at_point_maps_second_visual_row_past_the_space() {
-        let text = "abcde abcde abcde";
-        assert_eq!(col_at_point(text, 10.0, 1, 0.0), 6);
-        assert_eq!(col_at_point(text, 10.0, 0, 3.0), 3);
-        // Beyond the last row: clamp to the line end.
-        assert_eq!(col_at_point(text, 10.0, 7, 0.0), text.chars().count());
-    }
 }

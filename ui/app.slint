@@ -74,8 +74,9 @@ export component AppWindow inherits Window {
     in-out property <length> editor-char-w;
     in-out property <length> editor-view-w;
     // Cursor wash geometry, computed by Rust.
-    in-out property <length> cursor-y: 0px;
-    in-out property <length> cursor-h: 0px;
+    // Exact caret/selection byte offsets from the native editor surface.
+    out property <int> editor-caret-offset: 0;
+    out property <int> editor-anchor-offset: 0;
     in-out property <bool> document-empty: true;
     // Programmatic editor focus: Rust sets the row and bumps the token.
     in-out property <int> editor-focus-line: -1;
@@ -280,7 +281,9 @@ export component AppWindow inherits Window {
     }
 
     public function reveal-line(index: int) {
-        editor.reveal-y(root.cursor-y);
+        // Approximate scroll target only; the overlays themselves are
+        // aligned structurally inside the editor, not by this estimate.
+        editor.reveal-y(index * editor.line-pitch);
     }
 
     /// Move the native caret to a UTF-8 byte offset (see Editor.place-caret).
@@ -291,6 +294,8 @@ export component AppWindow inherits Window {
     // Renderer-measured editor metrics, read by Rust for the overlay
     // geometry (band y offsets, caret line/col from pixel points).
     line-pitch: editor.line-pitch;
+    editor-caret-offset: editor.caret-offset;
+    editor-anchor-offset: editor.anchor-offset;
 
     // Window-space geometry of the editor region, read by the Win32 Rich
     // Edit embedding so the native child sits exactly over this area. The
@@ -470,8 +475,6 @@ export component AppWindow inherits Window {
                     font-family: root.font-family;
                     base-font-size: root.base-font-size;
                     motion-enabled: root.animations;
-                    cursor-y: root.cursor-y;
-                    cursor-h: root.cursor-h;
 
                     doc-edited(text) => { root.doc-edited(text); }
                     caret-point(x, y) => { root.caret-point(x, y); }

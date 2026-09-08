@@ -99,42 +99,24 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
         // (line, col) with the renderer-measured overlay geometry and the
         // glyph ruler so the status bar and keyboard edits agree with the
         // mouse.
-        window.on_caret_point(move |x: f32, y: f32| {
+        window.on_caret_point(move |_x: f32, _y: f32| {
+            // The pixel point is unused: the native surface reports the caret
+            // and selection anchor as exact byte offsets, so (line, col) come
+            // from counting newlines — immune to any renderer/Rust geometry
+            // drift (the old pixel mapping is what mis-aimed highlights).
             let Some(win) = w.upgrade() else { return };
-            let geom = sync::compute_geom(&win, &lock(&s));
-            let char_w = win.get_editor_char_w().max(0.1);
-            let view_w = win.get_editor_view_w();
-            let (zoom, wrap) = {
-                let st = lock(&s);
-                (st.settings.zoom, st.settings.word_wrap)
-            };
-            let mut line = geom.len().saturating_sub(1);
-            let mut row_within = 0usize;
-            let pitch = win.get_line_pitch().max(1.0);
-            for (i, g) in geom.iter().enumerate() {
-                if y >= g.0 && y < g.0 + g.1 {
-                    line = i;
-                    row_within = (((y - g.0) / pitch).floor().max(0.0)) as usize;
-                    break;
-                }
-            }
+            let caret = win.get_editor_caret_offset().max(0) as usize;
+            let anchor = win.get_editor_anchor_offset().max(0) as usize;
             {
                 let mut st = lock(&s);
+                let (line, col) = st.offset_to_line_col(caret);
                 st.cursor.line = line;
-                let text = st
-                    .doc()
-                    .lines
-                    .get(line)
-                    .map(|l| l.text.clone())
-                    .unwrap_or_default();
-                let len = text.chars().count();
-                let x_chars = (x - sync::input_x(zoom)) / char_w;
-                st.cursor.col = if wrap {
-                    let avail = ((view_w - sync::input_x(zoom)) / char_w).max(1.0);
-                    sync::col_at_point(&text, avail, row_within, x_chars)
+                st.cursor.col = col;
+                if anchor != caret {
+                    st.anchor = Some(st.offset_to_line_col(anchor).0);
                 } else {
-                    (x_chars.round().max(0.0) as usize).min(len)
-                };
+                    st.anchor = None;
+                }
             }
             sync::sync_status(&win, &lock(&s));
         });

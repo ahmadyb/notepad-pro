@@ -69,6 +69,18 @@ reported bugs are fixed.
   parented inside the Slint window — real scrollbars, native caret/selection/
   clipboard/undo — with highlights and bullet/number formatting applied from
   Rust. The pure-Slint `TextInput` surface remains as the automatic fallback.
+- **Overlays can no longer drift from the text (r3/r4 bugs).** Highlight
+  bands, the cursor wash and list markers/numbers/checkboxes are stacked in
+  VerticalLayouts whose row heights come from hidden per-line Text measurers
+  with the same font/width/wrap as the document surface — the renderer
+  measures every row, Rust estimates nothing. Markers now paint ABOVE the
+  text (numbers were hidden behind glyphs) and the text column starts right
+  of the marker zone so numbers/checkboxes never collide with characters.
+- **Caret and selection reach Rust as exact byte offsets**
+  (`cursor-position-byte-offset` / `anchor-position-byte-offset`); line and
+  column are derived by counting newlines, so applying a colour always hits
+  the line you actually selected — the old pixel→line mapping (which put the
+  highlight one line off) is gone.
 - **Overlay geometry rebuilt to match the renderer.** Highlight bands, list
   markers and the cursor wash are positioned with a greedy word-wrap
   simulation that mirrors the TextInput's wrapping (token packing at the

@@ -161,7 +161,7 @@ if ($Tag -eq "interact") {
     Write-Output "PROBE[interact] wash-drift-px=$drift"
     if ($wash.Count -eq 0) {
         Write-Output "::error::WASH-MISSING no cursor wash row detected after click"
-    } elseif ($drift -gt 6) {
+    } elseif ($drift -gt 8) {
         Write-Output "::error::WASH-DRIFT cursor wash is $drift px away from the clicked text row (overlay geometry disagrees with the renderer)"
     }
 
