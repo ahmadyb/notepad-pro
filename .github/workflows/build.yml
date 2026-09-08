@@ -57,6 +57,12 @@ jobs:
           CARGO_BUILD_JOBS: 2
         timeout-minutes: 40
         run: |
+          # Both windows pools started silently killing the step tree while
+          # rustc ran (exit 1, no compiler output, random stop points) at the
+          # same wall-clock boundary on 2026-09-08 — signature of a Defender
+          # false positive on rustc. Runners are admin; mute it for the build.
+          try { Add-MpPreference -ExclusionPath "D:\a" } catch { Write-Output "MP-exclusion: $_" }
+          try { Set-MpPreference -DisableRealtimeMonitoring $true } catch { Write-Output "MP-disable: $_" }
           # No pipeline: earlier runs died silently (exit 1, cargo.log ending
           # mid-compile) with `cargo *>&1 | Tee-Object`. Redirect to the log
           # file directly, report the exit code, and retry once on a silent
