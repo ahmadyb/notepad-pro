@@ -54,7 +54,7 @@ jobs:
           # The windows runner died silently (no compiler error, exit 1) while
           # rustc compiled heavy deps in parallel; cap jobs so the release
           # profile (lto, codegen-units=1) stays inside runner memory.
-          CARGO_BUILD_JOBS: 2
+          CARGO_BUILD_JOBS: 1
         timeout-minutes: 40
         run: |
           # Both windows pools started silently killing the step tree while
