@@ -23,6 +23,32 @@ jobs:
       - name: Cross-file contract check
         run: python3 tools/check_consistency.py
 
+  # ── Fast compile verification on a pool that is not being killed ───────
+  # The windows pool started silently killing cargo mid-compile (2026-09-08);
+  # `cargo check` on ubuntu still runs every build.rs (including slint-build,
+  # which compiles all .slint files) and type-checks the whole workspace, so
+  # code regressions surface here even while the windows build is flaky.
+  check:
+    name: Compile check (ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.89
+      - name: System libs for Slint backend build scripts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libxkbcommon-dev libfontconfig1-dev libfreetype-dev libwayland-dev libx11-xcb-dev libudev-dev pkg-config
+      - name: cargo check (workspace)
+        run: cargo check --workspace --verbose 2>&1 | tee check.log; exit ${pipestatus[0]}
+      - name: Surface check errors
+        if: failure()
+        run: |
+          grep -E "^error" -A 8 check.log | head -80 | sed 's/^/::error::/'
+          tail -25 check.log | sed 's/^/::error::TAIL /'
+          exit 0
+
   # ── Windows build, tests, installer ─────────────────────────────────────
   build:
     name: windows-latest
