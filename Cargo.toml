@@ -56,10 +56,18 @@ tempfile = "3"
 
 [profile.release]
 opt-level = 3
-lto = true
+lto = "thin"
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# Dependency crates compiled light: a cold release build of `windows-sys` at
+# opt-level 3 exhausted the CI runner's memory and got the step tree killed
+# (silent exit 1, cargo.log ending mid-compile). Our own crates keep the full
+# release settings above; only third-party code is down-shifted.
+[profile.release.package."*"]
+opt-level = 1
+codegen-units = 16
 
 [profile.release-debug]
 inherits = "release"
