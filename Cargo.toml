@@ -66,7 +66,7 @@ panic = "abort"
 # (silent exit 1, cargo.log ending mid-compile). Our own crates keep the full
 # release settings above; only third-party code is down-shifted.
 [profile.release.package."*"]
-opt-level = 1
+opt-level = 0
 codegen-units = 16
 
 [profile.release-debug]
