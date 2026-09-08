@@ -42,6 +42,11 @@ jobs:
           shared-key: windows
 
       - name: Build (release)
+        env:
+          # The windows runner died silently (no compiler error, exit 1) while
+          # rustc compiled heavy deps in parallel; cap jobs so the release
+          # profile (lto, codegen-units=1) stays inside runner memory.
+          CARGO_BUILD_JOBS: 2
         run: |
           cargo build --release --verbose *>&1 | Tee-Object -FilePath cargo.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
