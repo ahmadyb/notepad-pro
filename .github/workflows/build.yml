@@ -27,7 +27,10 @@ jobs:
   build:
     name: windows-latest
     needs: consistency
-    runs-on: windows-latest
+    # windows-latest (2025 pool) started silently killing cargo mid-compile
+    # (exit 1, no error output, random stop points) on 2026-09-08; the 2022
+    # image is a different pool and was unaffected.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
