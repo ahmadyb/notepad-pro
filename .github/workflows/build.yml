@@ -76,32 +76,22 @@ jobs:
           shared-key: windows
 
       - name: Build (release)
-        env:
-          # The windows runner died silently (no compiler error, exit 1) while
-          # rustc compiled heavy deps in parallel; cap jobs so the release
-          # profile (lto, codegen-units=1) stays inside runner memory.
-          CARGO_BUILD_JOBS: 1
         timeout-minutes: 40
         run: |
-          # Both windows pools started silently killing the step tree while
-          # rustc ran (exit 1, no compiler output, random stop points) at the
-          # same wall-clock boundary on 2026-09-08 — signature of a Defender
-          # false positive on rustc. Runners are admin; mute it for the build.
-          try { Add-MpPreference -ExclusionPath "D:\a" } catch { Write-Output "MP-exclusion: $_" }
-          try { Set-MpPreference -DisableRealtimeMonitoring $true } catch { Write-Output "MP-disable: $_" }
-          # No pipeline: earlier runs died silently (exit 1, cargo.log ending
-          # mid-compile) with `cargo *>&1 | Tee-Object`. Redirect to the log
-          # file directly, report the exit code, and retry once on a silent
-          # death so a one-off runner kill cannot sink the build.
+          # Markers are appended INTO cargo.log (not just stdout) so the
+          # annotation-surfacing step — which can only show ~10 lines — always
+          # sees the exit code and whether cargo printed a real error. The log
+          # zip channel is blocked from this sandbox, so annotations are the
+          # only window; they must carry the ending, not a mid-build slice.
           cargo build --release *> cargo.log
           $code = $LASTEXITCODE
-          if ($code -ne 0 -and -not (Select-String -Path cargo.log -Pattern "^error" -Quiet)) {
-            Write-Output "SILENT-DEATH code=$code - retrying once"
+          $hasErr = [bool](Select-String -Path cargo.log -Pattern "^error" -Quiet)
+          if ($code -ne 0 -and -not $hasErr) {
+            Add-Content cargo.log "SILENT-DEATH code=$code - retrying once"
             cargo build --release *>> cargo.log
             $code = $LASTEXITCODE
           }
-          Write-Output "BUILD-EXIT=$code"
-          Get-Content cargo.log -Tail 30
+          Add-Content cargo.log "BUILD-EXIT=$code HASERROR=$([bool](Select-String -Path cargo.log -Pattern '^error' -Quiet))"
           exit $code
         shell: pwsh
 
@@ -115,14 +105,20 @@ jobs:
         if: failure()
         shell: pwsh
         run: |
-          foreach ($f in @("cargo.log", "cargo-test.log")) {
-            if (Test-Path $f) {
-              # Tail first: it always shows why the step died (the annotation
-              # list has a budget and tails used to be truncated away).
-              Get-Content $f | Select-Object -Last 40 | ForEach-Object { Write-Output "::error::TAIL[$f] $_" }
-              Get-Content $f | Select-String -Pattern "^error" -Context 0,8 | Select-Object -First 25 | ForEach-Object { $_.ToString().Split("\n") | ForEach-Object { Write-Output "::error::$_" } }
-              Get-Content $f | Select-String -Pattern "FAILED|panicked at" -Context 0,4 | Select-Object -First 20 | ForEach-Object { $_.ToString().Split("\n") | ForEach-Object { Write-Output "::error::$_" } }
-            }
+          # GitHub keeps only ~10 annotations of a level per step. Earlier this
+          # step emitted `Select-Object -Last 40` TAIL lines, so the cap kept
+          # the FIRST 10 of that window -- a mid-build slice -- and silently
+          # dropped the real end of the log where the actual error lives. Now:
+          # one DIAG line (real error? how far? exit code), then the TRUE last
+          # 9 lines. That ending is the whole point.
+          $log = "cargo.log"; if (-not (Test-Path $log)) { $log = "cargo-test.log" }
+          if (Test-Path $log) {
+            $hasErr = [bool](Select-String -Path $log -Pattern "^error" -Quiet)
+            $n = (Get-Content $log).Count
+            Write-Output "::error::DIAG log=$log hasError=$hasErr totalLines=$n"
+            Get-Content $log | Select-Object -Last 9 | ForEach-Object { Write-Output "::error::TAIL $_" }
+          } else {
+            Write-Output "::error::DIAG no cargo log found"
           }
           exit 0
 
