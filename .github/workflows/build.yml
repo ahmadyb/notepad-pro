@@ -34,7 +34,12 @@ jobs:
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
       - name: Override the in-repo MSRV pin for CI
-        run: rustup override set stable
+        # Pinned, not floating `stable`: a newly published stable coincided
+        # with silent mid-compile runner kills (cargo died with no error
+        # output while deps compiled). Reproduce with a known-good compiler.
+        run: |
+          rustup toolchain install 1.89 --profile minimal
+          rustup override set 1.89
 
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
