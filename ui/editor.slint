@@ -61,6 +61,11 @@ export component Editor inherits Rectangle {
     out property <length> dbg-text-h: input.preferred-height;
     out property <length> dbg-bands-h: bands.height;
     out property <length> dbg-caret-y: caret-y;
+    // In-app overlay drift: the renderer's own caret y (caret-point) minus the
+    // band stack's y for the same line (cursor-line * line-pitch). ~0 means the
+    // overlays sit exactly on the renderer's rows; this is the trustworthy
+    // drift signal (pixel-scanning the subtle wash is not).
+    out property <length> dbg-drift: Math.abs(caret-y - cursor-line * line-pitch);
     property <length> caret-y: 0px;
 
     background: AppTheme.editor-bg;

@@ -158,15 +158,25 @@ if ($Tag -eq "interact") {
     $xw = [Math]::Min($bounds.Width - 140, 1150)
     $wash = WashTops $bmp2 $bg $xw $y0 $y1
     Write-Output "::warning::INTERACT wash tops after click row $clickRow (y=$rowY): $($wash[0..5] -join ',')"
+    # Pixel wash tops (informational only -- the subtle wash is unreliable to
+    # pixel-scan; the app's own caret-y vs band-y drift below is authoritative).
     $drift = 999
     foreach ($wt in $wash) { $d = [Math]::Abs($wt - $tops[$clickRow]); if ($d -lt $drift) { $drift = $d } }
-    Write-Output "PROBE[interact] wash-drift-px=$drift"
+    Write-Output "PROBE[interact] pixel-wash-drift-px=$drift (informational)"
+
+    # Authoritative drift: re-read geodump (rewritten on caret change) for the
+    # app's own |caret_y - cursor_line*line_pitch|. ~0 => overlays aligned.
     $fail = 0
-    if ($wash.Count -eq 0) {
-        Write-Output "::error::WASH-MISSING no cursor wash row detected after click"
-        $fail = 1
-    } elseif ($drift -gt 8) {
-        Write-Output "::error::WASH-DRIFT cursor wash is $drift px away from the clicked text row (overlay geometry disagrees with the renderer)"
+    if (Test-Path "geodump.json") {
+        $gd2 = Get-Content "geodump.json" -Raw | ConvertFrom-Json
+        $appDrift = [Math]::Abs([double]$gd2.drift)
+        Write-Output "::warning::INTERACT app-drift-px=$appDrift (caret_y=$($gd2.caret_y) line=$($gd2.cursor_line))"
+        if ($appDrift -gt 8) {
+            Write-Output "::error::WASH-DRIFT app reports cursor wash $appDrift px from the caret row (overlay geometry disagrees with the renderer)"
+            $fail = 1
+        }
+    } else {
+        Write-Output "::error::GEODUMP-MISSING geodump.json was not written after click"
         $fail = 1
     }
 

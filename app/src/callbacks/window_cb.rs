@@ -99,15 +99,16 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
         // (line, col) with the renderer-measured overlay geometry and the
         // glyph ruler so the status bar and keyboard edits agree with the
         // mouse.
-        window.on_caret_point(move |_x: f32, _y: f32| {
-            // The pixel point is unused: the native surface reports the caret
-            // and selection anchor as exact byte offsets, so (line, col) come
-            // from counting newlines — immune to any renderer/Rust geometry
-            // drift (the old pixel mapping is what mis-aimed highlights).
+        window.on_caret_point(move |_x: f32, y: f32| {
+            // The pixel point is unused for EDITING: the native surface reports
+            // the caret and selection anchor as exact byte offsets, so (line,
+            // col) come from counting newlines — immune to any renderer/Rust
+            // geometry drift (the old pixel mapping is what mis-aimed
+            // highlights). The y IS used for the CI drift dump below.
             let Some(win) = w.upgrade() else { return };
             let caret = win.get_editor_caret_offset().max(0) as usize;
             let anchor = win.get_editor_anchor_offset().max(0) as usize;
-            {
+            let line = {
                 let mut st = lock(&s);
                 let (line, col) = st.offset_to_line_col(caret);
                 st.cursor.line = line;
@@ -117,8 +118,32 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
                 } else {
                     st.anchor = None;
                 }
-            }
+                line
+            };
             sync::sync_status(&win, &lock(&s));
+
+            // CI drift probe: the renderer's caret y (input-local, and the band
+            // stack shares that origin) minus the band stack's y for the same
+            // line. ~0 => overlays sit exactly on the renderer's rows.
+            if std::env::var("NP_DEBUG_GEOM").is_ok() {
+                let pitch = win.get_line_pitch();
+                let drift = y - line as f32 * pitch;
+                let dump = serde_json::json!({
+                    "pitch": pitch,
+                    "char_w": win.get_editor_char_w(),
+                    "view_w": win.get_editor_view_w(),
+                    "wrap": win.get_word_wrap(),
+                    "text_h": win.get_dbg_text_h(),
+                    "bands_h": win.get_dbg_bands_h(),
+                    "caret_y": y,
+                    "cursor_line": line,
+                    "drift": drift,
+                });
+                let _ = std::fs::write(
+                    "geodump.json",
+                    serde_json::to_string(&dump).unwrap_or_default(),
+                );
+            }
         });
     }
 
