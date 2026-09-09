@@ -44,6 +44,9 @@ function Screenshot {
 }
 
 # Text-row tops: rows whose 4px cell scanline contains dark-text glyphs.
+# Threshold 200: real glyphs on the dark theme are near-white (sum-diff ~500),
+# while the cursor-wash lightening is only ~100 -- a lower threshold let wash
+# bands masquerade as text rows and corrupted the drift reference.
 function TextRowTops($bmp, $bg, $x0, $x1, $y0, $y1) {
     $tops = @()
     $inText = $false
@@ -52,7 +55,7 @@ function TextRowTops($bmp, $bg, $x0, $x1, $y0, $y1) {
         for ($x = $x0; $x -lt $x1; $x += 6) {
             $px = $bmp.GetPixel($x, $y)
             $d = [Math]::Abs([int]$px.R - [int]$bg.R) + [Math]::Abs([int]$px.G - [int]$bg.G) + [Math]::Abs([int]$px.B - [int]$bg.B)
-            if ($d -gt 90) { $hit++; if ($hit -ge 3) { break } }
+            if ($d -gt 200) { $hit++; if ($hit -ge 3) { break } }
         }
         $row = $hit -ge 3
         if ($row -and -not $inText) { $tops += $y }
@@ -159,10 +162,13 @@ if ($Tag -eq "interact") {
     $drift = 999
     foreach ($wt in $wash) { $d = [Math]::Abs($wt - $tops[$clickRow]); if ($d -lt $drift) { $drift = $d } }
     Write-Output "PROBE[interact] wash-drift-px=$drift"
+    $fail = 0
     if ($wash.Count -eq 0) {
         Write-Output "::error::WASH-MISSING no cursor wash row detected after click"
+        $fail = 1
     } elseif ($drift -gt 8) {
         Write-Output "::error::WASH-DRIFT cursor wash is $drift px away from the clicked text row (overlay geometry disagrees with the renderer)"
+        $fail = 1
     }
 
     # ── (a) Enter hang detector: click mid-word, press Enter, stay alive ──
@@ -182,9 +188,11 @@ if ($Tag -eq "interact") {
     Write-Output "PROBE[interact] responding after-type=$alive1 after-enter=$alive2 after-more=$alive3"
     if (-not $alive2 -or -not $alive3) {
         Write-Output "::error::ENTER-HANG app stopped responding after Enter in the middle of a word (after-enter=$alive2 after-more=$alive3)"
+        $fail = 1
     }
     if (-not $alive1) {
         Write-Output "::error::TYPE-HANG app stopped responding after plain typing"
+        $fail = 1
     }
     $bmpFinal = Screenshot
     $bmpFinal.Save("ui_probe_interact.png")
@@ -192,7 +200,8 @@ if ($Tag -eq "interact") {
     $bmp2.Dispose()
     $bmp.Dispose()
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-    exit 0
+    # Hard-fail so wash drift / hangs can never ship behind a green build again.
+    exit $fail
 }
 
 # ── static modes: coarse ASCII map of the editor region ───────────────────
