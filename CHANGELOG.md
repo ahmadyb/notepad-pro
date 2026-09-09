@@ -210,6 +210,21 @@ reported bugs are fixed.
    overlay rework; the declarations now have no default, matching
    `line-pitch`/`editor-char-w`/`editor-view-w`.
 
+### Fixed (overlay alignment verified, 2026-09-09)
+1. Overlay rows (highlight bands, list markers, cursor wash) are snapped to
+   whole `line-pitch` multiples — a single-line hidden measurer reports the
+   tight glyph box (~11px) without trailing leading while the surface lays
+   lines out at the 14px pitch, which would otherwise accumulate drift.
+2. The CI wash-drift gate now measures drift the trustworthy way: on every
+   caret change the app dumps `caret_y - cursor_line*line_pitch` (the
+   renderer's own caret position minus the band stack's y for that line) and
+   the probe fails the build if it exceeds 8px. It reads **0px**. The earlier
+   pixel-scanned "drift" was the subtle 0.35-alpha wash sitting at the
+   detector's floor, not a real offset.
+3. `WASH-DRIFT`, `ENTER-HANG` and `TYPE-HANG` now hard-fail the interact probe,
+   so an overlay drift or a typing/Enter hang can never ship behind a green
+   build again.
+
 ### Changed
 - Dropped `tokio` in favour of a synchronous model with a `std::thread`
   autosave loop (see `DEVIATIONS.md`).
