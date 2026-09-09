@@ -73,6 +73,10 @@ export component AppWindow inherits Window {
     in-out property <length> line-pitch;
     in-out property <length> editor-char-w;
     in-out property <length> editor-view-w;
+    // CI drift diagnostics forwarded from the editor (NP_DEBUG_GEOM).
+    in-out property <length> dbg-text-h;
+    in-out property <length> dbg-bands-h;
+    in-out property <length> dbg-caret-y;
     // Cursor wash geometry, computed by Rust.
     // Exact caret/selection byte offsets from the native editor surface.
     // No defaults: the bindings below (editor-caret-offset: editor.caret-offset)
@@ -312,6 +316,9 @@ export component AppWindow inherits Window {
         root.height - editor-gy - AppTheme.statusbar-height;
     editor-char-w: editor.char-w;
     editor-view-w: editor.view-w;
+    dbg-text-h: editor.dbg-text-h;
+    dbg-bands-h: editor.dbg-bands-h;
+    dbg-caret-y: editor.dbg-caret-y;
 
     // ════════════════════════════════════════════════════════════════════
     //  LAYOUT

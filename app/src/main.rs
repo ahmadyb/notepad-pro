@@ -150,6 +150,13 @@ fn main() -> Result<()> {
                 "view_w": win.get_editor_view_w(),
                 "zoom": guard.settings.zoom,
                 "wrap": guard.settings.word_wrap,
+                // CI drift diagnostics: document-surface total height vs the
+                // overlay band stack's total height. A ratio != 1 means the
+                // per-line measurers do not reproduce the TextInput's line
+                // geometry and the overlays drift.
+                "text_h": win.get_dbg_text_h(),
+                "bands_h": win.get_dbg_bands_h(),
+                "caret_y": win.get_dbg_caret_y(),
             });
             let _ = std::fs::write("geodump.json", serde_json::to_string(&dump).unwrap_or_default());
         });

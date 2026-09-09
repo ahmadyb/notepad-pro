@@ -130,8 +130,7 @@ if ($Tag -eq "interact") {
     if (Test-Path "geodump.json") {
         $gd = Get-Content "geodump.json" -Raw | ConvertFrom-Json
         Write-Output "::warning::GEODUMP pitch=$($gd.pitch) char_w=$($gd.char_w) view_w=$($gd.view_w) zoom=$($gd.zoom) wrap=$($gd.wrap)"
-        Write-Output "::warning::GEODUMP y=$(@($gd.y) -join ',')"
-        Write-Output "::warning::GEODUMP h=$(@($gd.h) -join ',')"
+        Write-Output "::warning::GEODUMP text_h=$($gd.text_h) bands_h=$($gd.bands_h) caret_y=$($gd.caret_y)"
     } else {
         Write-Output "::error::GEODUMP-MISSING geodump.json was not written"
     }

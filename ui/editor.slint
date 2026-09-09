@@ -54,6 +54,15 @@ export component Editor inherits Rectangle {
     out property <length> char-w: glyph-ruler.preferred-width / 10;
     out property <length> view-w: scroll.visible-width;
 
+    // CI drift diagnostics (NP_DEBUG_GEOM): the document surface's own total
+    // height vs the overlay band stack's total height. If these disagree the
+    // per-line measurers do not reproduce the TextInput's line geometry and
+    // the overlays drift; the ratio tells us the exact correction factor.
+    out property <length> dbg-text-h: input.preferred-height;
+    out property <length> dbg-bands-h: bands.height;
+    out property <length> dbg-caret-y: caret-y;
+    property <length> caret-y: 0px;
+
     background: AppTheme.editor-bg;
     clip: true;
 
@@ -119,7 +128,7 @@ export component Editor inherits Rectangle {
                 // Row heights come from hidden per-line measurers with the
                 // same font/width/wrap as the surface: the stack therefore
                 // matches the TextInput's own line geometry exactly.
-                VerticalLayout {
+                bands := VerticalLayout {
                     x: 0; y: 0; width: 100%;
                     spacing: 0px;
                     for line[i] in root.lines : Rectangle {
@@ -172,7 +181,10 @@ export component Editor inherits Rectangle {
                     selection-foreground-color: AppTheme.editor-text;
 
                     edited => { root.doc-edited(self.text); }
-                    cursor-position-changed(pt) => { root.caret-point(pt.x, pt.y); }
+                    cursor-position-changed(pt) => {
+                        root.caret-y = pt.y;
+                        root.caret-point(pt.x, pt.y);
+                    }
                 }
 
                 // ── List markers, OVER the text so numbers/checkboxes are
