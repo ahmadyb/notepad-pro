@@ -132,7 +132,12 @@ export component Editor inherits Rectangle {
                     x: 0; y: 0; width: 100%;
                     spacing: 0px;
                     for line[i] in root.lines : Rectangle {
-                        height: max(band-m.preferred-height, 1px);
+                        // Snap to whole line pitches: a single-line measurer
+                        // reports the tight glyph box (~11px) without trailing leading,
+                        // while the surface lays lines out at line-pitch (14px). Using
+                        // the measurer only to COUNT visual lines and multiplying by
+                        // line-pitch keeps every overlay row exactly on its text row.
+                        height: max(Math.round(band-m.preferred-height / root.line-pitch), 1) * root.line-pitch;
                         band-m := Text {
                             text: line.text;
                             font-family: root.font-family;
@@ -193,7 +198,7 @@ export component Editor inherits Rectangle {
                     x: 0; y: 0; width: 100%;
                     spacing: 0px;
                     for line[i] in root.lines : Rectangle {
-                        height: max(marker-m.preferred-height, 1px);
+                        height: max(Math.round(marker-m.preferred-height / root.line-pitch), 1) * root.line-pitch;
                         marker-m := Text {
                             text: line.text;
                             font-family: root.font-family;
