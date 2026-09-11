@@ -76,37 +76,34 @@ pub fn sync_editor(window: &AppWindow, state: &AppState) {
     window.set_native_frame(state.settings.native_frame);
 }
 
-/// Reconciles `fresh` against the live row model strictly in place.
+/// Reconciles `fresh` against the live row model.
 ///
-/// The editor rows are READ-ONLY `TextInput`s: their `text:` bindings never
-/// die, so the model is the single source of truth and every change —
-/// including line splits and joins — can be applied with `set_row_data` /
-/// `push` / `remove` without ever recreating a row. Repeated-row components
-/// survive, and with them the focused row's keyboard focus: typing and
-/// Enter continue uninterrupted, exactly like a textarea. (Replacing the
-/// whole model would make the repeater destroy and recreate every row,
-/// dropping focus — Slint 1.6 cannot re-focus programmatically.)
+/// The rows only drive the overlay chrome (bands, markers) — the document
+/// surface is a single native TextInput — so nothing holds keyboard focus or
+/// identity per row. A wholesale swap is therefore safe and, crucially, ONE
+/// model notification instead of one per changed row: the old in-place
+/// `set_row_data`/`push` storm made each paste relayout the repeaters O(n)
+/// times (O(n²) overall), which is what froze the window on large pastes.
 fn update_lines(window: &AppWindow, fresh: Vec<EditorLineData>) {
     let current = window.get_lines();
-    let Some(vm) = current.as_any().downcast_ref::<VecModel<EditorLineData>>() else {
-        // First sync (or a model we did not build): install it wholesale.
-        window.set_lines(ModelRc::from(std::rc::Rc::new(VecModel::from(fresh))));
-        return;
-    };
-
-    let shared = vm.row_count().min(fresh.len());
-    for (i, row) in fresh.iter().take(shared).enumerate() {
-        let Some(cur) = vm.row_data(i) else { continue };
-        if cur != *row {
-            vm.set_row_data(i, row.clone());
+    let same_shape = current
+        .as_any()
+        .downcast_ref::<VecModel<EditorLineData>>()
+        .map(|vm| vm.row_count() == fresh.len())
+        .unwrap_or(false);
+    if same_shape {
+        // Same row count: update changed rows in place (cheap, keeps the
+        // model pointer stable for the repeaters).
+        if let Some(vm) = current.as_any().downcast_ref::<VecModel<EditorLineData>>() {
+            for (i, row) in fresh.iter().enumerate() {
+                if vm.row_data(i).as_ref() != Some(row) {
+                    vm.set_row_data(i, row.clone());
+                }
+            }
+            return;
         }
     }
-    for row in fresh.iter().skip(shared) {
-        vm.push(row.clone());
-    }
-    while vm.row_count() > fresh.len() {
-        vm.remove(vm.row_count() - 1);
-    }
+    window.set_lines(ModelRc::from(std::rc::Rc::new(VecModel::from(fresh))));
 }
 
 /// Pushes a single row into the live model. The typing callback uses this to
@@ -136,6 +133,7 @@ pub fn sync_editor_row(window: &AppWindow, state: &AppState, index: usize) {
 
 pub fn sync_flags(window: &AppWindow, state: &AppState) {
     window.set_sidebar_open(state.settings.sidebar_open);
+    window.set_logging(state.settings.logging);
     window.set_find_open(state.find_open);
     window.set_replace_open(state.replace_open);
     window.set_extract_open(state.extract_open);

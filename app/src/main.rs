@@ -68,6 +68,11 @@ struct Cli {
     #[arg(long)]
     rich_edit: bool,
 
+    /// Write a diagnostic log to notepadpro.log in the data directory
+    /// (same as the toolbar "Logs" toggle / `"logging": true` in settings).
+    #[arg(long)]
+    logs: bool,
+
     /// Verbose logging.
     #[arg(short, long)]
     verbose: bool,
@@ -89,6 +94,21 @@ fn main() -> Result<()> {
 
     let mut settings = Settings::load(&settings_path());
     settings.clamp();
+
+    // Toggleable diagnostics log (toolbar "Logs" / --logs / settings.logging).
+    // Installed before anything else so a startup fault is captured too.
+    notepad_pro::diag::init(cli.logs || settings.logging, data_dir.join("notepadpro.log"));
+    notepad_pro::diag::install_panic_hook();
+    notepad_pro::diag::log(
+        "start",
+        &format!(
+            "version={} args={:?} logging={}",
+            notepad_pro_core::APP_VERSION,
+            std::env::args().collect::<Vec<_>>(),
+            cli.logs || settings.logging
+        ),
+    );
+
     if let Some(theme) = cli.theme.as_deref() {
         if !notepad_pro_core::highlight::palette::is_known_theme(theme) {
             anyhow::bail!(

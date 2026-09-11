@@ -46,6 +46,10 @@ pub struct Settings {
     /// Embed the native Win32 Rich Edit control as the editor surface
     /// (opt-in; the pure-Slint surface is the default).
     pub native_editor: bool,
+    /// Write a diagnostic log (edit/paste/clipboard/sync timings) to
+    /// `notepadpro.log` in the data directory. Toggleable at runtime from the
+    /// toolbar "Logs" button so users can capture a repro of a hang.
+    pub logging: bool,
     /// Custom highlight swatches added through the colour picker.
     pub custom_palette: Vec<CustomColour>,
     /// Most recently opened files, newest first.
@@ -67,6 +71,7 @@ impl Default for Settings {
             extract_order: "document".into(),
             native_frame: true,
             native_editor: false,
+            logging: false,
             custom_palette: Vec::new(),
             recent_files: Vec::new(),
         }

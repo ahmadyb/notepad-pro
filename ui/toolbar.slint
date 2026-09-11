@@ -37,8 +37,10 @@ export component ToolBar inherits Rectangle {
     callback extract-opened();
     callback sidebar-toggled();
     callback word-wrap-toggled();
+    callback logs-toggled();
     callback theme-chosen(string);
     // +1 zoom in, -1 zoom out, 0 reset.
+    in property <bool> logging: false;
     callback zoom-step(float);
     callback about-opened();
 
@@ -100,6 +102,7 @@ export component ToolBar inherits Rectangle {
 
         GhostButton { label: "Notes"; toggled: root.sidebar-open; clicked => { root.sidebar-toggled(); } }
         GhostButton { label: "Wrap"; toggled: root.word-wrap; clicked => { root.word-wrap-toggled(); } }
+        GhostButton { label: "Logs"; toggled: root.logging; clicked => { root.logs-toggled(); } }
         GhostButton { label: "−"; min-width: 28px; clicked => { root.zoom-step(-1); } }
         GhostButton { label: "+"; min-width: 28px; clicked => { root.zoom-step(1); } }
         GhostButton { label: "1:1"; min-width: 32px; clicked => { root.zoom-step(0); } }

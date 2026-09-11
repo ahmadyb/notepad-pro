@@ -16,6 +16,7 @@ pub mod ui {
 
 pub mod callbacks;
 pub mod convert;
+pub mod diag;
 pub mod dialogs;
 pub mod native_edit;
 pub mod state;

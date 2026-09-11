@@ -85,7 +85,7 @@ function WashTops($bmp, $bg, $xw, $y0, $y1) {
 
 $cfgDir = Join-Path $env:APPDATA "NotePadPro"
 New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
-Set-Content -Path (Join-Path $cfgDir "settings.json") -Value '{"theme": "dark", "wordWrap": true, "animations": false}'
+Set-Content -Path (Join-Path $cfgDir "settings.json") -Value '{"theme": "dark", "wordWrap": true, "animations": false, "logging": true}'
 
 if ($Tag -eq "interact") {
     # Long wrapping lines + short lines: forces multi-visual-line rows so any
@@ -93,7 +93,7 @@ if ($Tag -eq "interact") {
     $long = ("morse " * 24).Trim()          # ~144 chars, wraps to 2+ visual lines
     $mid  = ("word " * 14).Trim()           # ~70 chars
     $doc = @()
-    for ($n = 0; $n -lt 60; $n++) {
+    for ($n = 0; $n -lt 400; $n++) {
         $doc += $long
         $doc += "PROBE-$n short"
         $doc += $mid
@@ -203,6 +203,30 @@ if ($Tag -eq "interact") {
         Write-Output "::error::TYPE-HANG app stopped responding after plain typing"
         $fail = 1
     }
+    # ── (c) paste hang detector: big clipboard payload through Ctrl+V ─────
+    $pasteLines = @()
+    for ($n = 0; $n -lt 500; $n++) { $pasteLines += "PASTED-$n .- -... -.-. -- ---" }
+    Set-Clipboard -Value ($pasteLines -join "`n")
+    Click 320 ($tops[0] + 8)
+    [System.Windows.Forms.SendKeys]::SendWait("^v")
+    Start-Sleep -Seconds 4
+    $proc.Refresh()
+    $alive4 = $proc.Responding
+    Write-Output "PROBE[interact] responding after-paste=$alive4"
+    if (-not $alive4) {
+        Write-Output "::error::PASTE-HANG app stopped responding after Ctrl+V paste of $($pasteLines.Count) lines"
+        $fail = 1
+    }
+
+    # Surface the app's own log tail (logging is enabled in settings.json).
+    $logPath = Join-Path $cfgDir "notepadpro.log"
+    if (Test-Path $logPath) {
+        Get-Content $logPath | Select-Object -Last 9 | ForEach-Object { Write-Output "::warning::LOG $_" }
+    } else {
+        Write-Output "::error::LOG-MISSING notepadpro.log was not written although logging=true"
+        $fail = 1
+    }
+
     $bmpFinal = Screenshot
     $bmpFinal.Save("ui_probe_interact.png")
     $bmpFinal.Dispose()

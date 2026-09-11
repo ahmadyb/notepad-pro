@@ -225,6 +225,25 @@ reported bugs are fixed.
    so an overlay drift or a typing/Enter hang can never ship behind a green
    build again.
 
+### Fixed (paste hang + toggleable diagnostics, 2026-09-09)
+1. **Paste no longer freezes the window.** `detect_enter_split` compared O(n)
+   slices at every candidate line — O(n²) — blocking the UI thread whenever a
+   large document gained exactly one line; it now walks the equal prefix and
+   suffix once (O(n), same caret tie-break for empty-line splits, all prior
+   unit cases preserved). The row model is also swapped wholesale when the
+   line count changes instead of emitting one `set_row_data`/`push`
+   notification per row, which made every big paste relayout the overlay
+   repeaters quadratically.
+2. **Toggleable logging** (`toolbar "Logs" button`, `--logs`, or
+   `"logging": true` in settings.json) appends timestamped lines with
+   per-stage deltas to `notepadpro.log` in the data directory: startup args,
+   every surface edit with old/new line counts and timings, enter-split
+   results, sync durations, clipboard failures and panics. A hang now leaves
+   a trail whose `+ms` gaps point at the stuck stage.
+3. The CI interact probe now pastes 500 lines through Ctrl+V into a 1200-line
+   document and hard-fails (`PASTE-HANG`) if the window stops responding, and
+   surfaces the app log tail as annotations.
+
 ### Changed
 - Dropped `tokio` in favour of a synchronous model with a `std::thread`
   autosave loop (see `DEVIATIONS.md`).

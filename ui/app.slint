@@ -106,6 +106,7 @@ export component AppWindow inherits Window {
     in-out property <bool> native-frame: true;
 
     in-out property <bool> sidebar-open: false;
+    in-out property <bool> logging: false;
     in-out property <bool> find-open: false;
     in-out property <bool> replace-open: false;
     in-out property <bool> extract-open: false;
@@ -218,6 +219,7 @@ export component AppWindow inherits Window {
     callback extract-panel-requested();
     callback sidebar-changed(bool);
     callback word-wrap-changed(bool);
+    callback logs-changed(bool);
     callback theme-changed(string);
     callback zoom-changed(float);
     callback about-requested();
@@ -414,6 +416,7 @@ export component AppWindow inherits Window {
             find-open: root.find-open;
             extract-open: root.extract-open;
             word-wrap: root.word-wrap;
+            logging: root.logging;
             can-undo: root.can-undo;
             can-redo: root.can-redo;
 
@@ -432,6 +435,7 @@ export component AppWindow inherits Window {
             extract-opened => { root.extract-panel-requested(); }
             sidebar-toggled => { root.sidebar-changed(!root.sidebar-open); }
             word-wrap-toggled => { root.word-wrap-changed(!root.word-wrap); }
+            logs-toggled => { root.logs-changed(!root.logging); }
             theme-chosen(name) => { root.theme-changed(name); }
             zoom-step(delta) => { root.zoom-changed(delta); }
             about-opened => { root.about-requested(); }

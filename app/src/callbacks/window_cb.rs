@@ -652,6 +652,7 @@ pub fn press_enter(window: &AppWindow, state: &SharedState) {
 /// `native_edit`). Shared so both surfaces get identical Enter/undo/list
 /// behaviour.
 pub fn apply_surface_text(window: &AppWindow, s: &SharedState, text: &str) {
+    let started = std::time::Instant::now();
     let (old_texts, caret_hint) = {
         let guard = lock(s);
         (
@@ -663,10 +664,20 @@ pub fn apply_surface_text(window: &AppWindow, s: &SharedState, text: &str) {
         .split('\n')
         .map(|l| l.trim_end_matches('\r').to_string())
         .collect();
+    crate::diag::log(
+        "edit",
+        &format!(
+            "surface edit: old_lines={} new_lines={} bytes={}",
+            old_texts.len(),
+            new_texts.len(),
+            text.len()
+        ),
+    );
     // Locate the Enter split from the text itself. The pixel-mapped caret
     // lags the native edit, and using it here joined the wrong pair of
     // lines — the "Enter rewrites my line / typing runs backwards" bug.
     let split = detect_enter_split(&old_texts, &new_texts, caret_hint);
+    crate::diag::log("edit", &format!("enter-split={split:?}"));
     {
         let mut guard = lock(s);
         guard.apply_full_text(text);
@@ -677,7 +688,15 @@ pub fn apply_surface_text(window: &AppWindow, s: &SharedState, text: &str) {
             guard.cursor.col = 0;
         }
     }
+    crate::diag::log(
+        "edit",
+        &format!("apply_full_text done in {:?}", started.elapsed()),
+    );
     sync::sync_all(window, &lock(s));
+    crate::diag::log(
+        "edit",
+        &format!("sync_all done in {:?} total", started.elapsed()),
+    );
     // Assigning `text` resets the Slint caret to offset 0. If the
     // reconciliation rewrote the surface (markdown shortcut folded into a
     // list marker) put the caret back where the user was.
@@ -697,22 +716,54 @@ fn detect_enter_split(old: &[String], new: &[String], caret_hint: usize) -> Opti
     if new.len() != old.len() + 1 {
         return None;
     }
-    let mut best: Option<(usize, usize)> = None;
-    for i in 0..old.len() {
-        if new[..i] != old[..i] || new[i + 2..] != old[i + 1..] {
-            continue;
-        }
-        let head = &new[i];
-        let tail = &new[i + 1];
-        // `head` must be a byte-prefix of the old line and `tail` its rest.
-        if old[i].starts_with(head.as_str()) && &old[i][head.len()..] == tail.as_str() {
-            let distance = i.abs_diff(caret_hint);
-            if best.map(|(d, _)| distance < d).unwrap_or(true) {
-                best = Some((distance, i));
-            }
+    // O(n) line comparisons: walk the equal prefix and the equal suffix; the
+    // single inserted line lies between them. The previous version compared
+    // O(n) slices at EVERY candidate index — O(n²) — which blocked the UI
+    // thread for minutes whenever a large document gained exactly one line
+    // (the "paste some text and it stops responding" hang).
+    let mut head = 0;
+    while head < old.len() && new[head] == old[head] {
+        head += 1;
+    }
+    let mut tail = 0;
+    while tail < old.len() - head && new[new.len() - 1 - tail] == old[old.len() - 1 - tail] {
+        tail += 1;
+    }
+    // The split old line is either uncovered (head+tail == len-1) or absorbed
+    // whole into the prefix/suffix when a half is empty (== len).
+    let covered = head + tail;
+    if covered != old.len() && covered != old.len() - 1 {
+        return None; // More than one line differs: ordinary typing/paste.
+    }
+    let valid = |i: usize| {
+        i < old.len()
+            && new[i + 2..] == old[i + 1..]
+            && old[i].starts_with(new[i].as_str())
+            && &old[i][new[i].len()..] == new[i + 1].as_str()
+    };
+    let mut base: Option<usize> = None;
+    for i in [head, head.saturating_sub(1)] {
+        if valid(i) {
+            base = Some(i);
+            break;
         }
     }
-    best.map(|(_, i)| i)
+    let Some(mut i) = base else { return None };
+    // Empty-line ambiguity (Enter on an empty line): every index inside the
+    // contiguous empty run is geometrically valid, so keep the old
+    // caret-proximity tie-break, bounded to that run — O(run), not O(n²).
+    if new[i].is_empty() && new[i + 1].is_empty() {
+        let mut lo = i;
+        while lo > 0 && old[lo - 1].is_empty() {
+            lo -= 1;
+        }
+        let mut hi = i;
+        while hi + 1 < old.len() && old[hi + 1].is_empty() && new[hi + 2].is_empty() {
+            hi += 1;
+        }
+        i = caret_hint.clamp(lo, hi);
+    }
+    Some(i)
 }
 
 /// The UTF-8 byte offset the native caret should be restored to, or `None`

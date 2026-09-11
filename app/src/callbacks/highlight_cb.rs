@@ -258,8 +258,22 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
 /// On a headless machine there is no clipboard to talk to; the error is
 /// surfaced as a toast rather than silently doing nothing (bug #10).
 pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
-    let mut clipboard = arboard::Clipboard::new().map_err(|err| err.to_string())?;
-    clipboard.set_text(text.to_string()).map_err(|err| err.to_string())
+    let result = (|| {
+        let mut clipboard = arboard::Clipboard::new().map_err(|err| err.to_string())?;
+        clipboard.set_text(text.to_string()).map_err(|err| err.to_string())
+    })();
+    crate::diag::log(
+        "clipboard",
+        &format!(
+            "set_text {} bytes -> {}",
+            text.len(),
+            match &result {
+                Ok(()) => "ok".to_string(),
+                Err(e) => format!("error: {e}"),
+            }
+        ),
+    );
+    result
 }
 
 /// Highlight the current selection with the armed colour (Ctrl+Shift+H).

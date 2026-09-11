@@ -124,6 +124,28 @@ pub fn wire(window: &AppWindow, state: &SharedState) {
     {
         let s = state.clone();
         let w = window.as_weak();
+        window.on_logs_changed(move |enabled| {
+            lock(&s).settings.logging = enabled;
+            crate::diag::set_enabled(enabled);
+            if let Some(win) = w.upgrade() {
+                sync::sync_flags(&win, &lock(&s));
+                let _ = persist(&win, &s);
+                let path = crate::diag::path()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default();
+                crate::diag::log("diag", &format!("logging toggled to {enabled}"));
+                if enabled {
+                    toast(&win, &format!("Logging on — {path}"));
+                } else {
+                    toast(&win, "Logging off");
+                }
+            }
+        });
+    }
+
+    {
+        let s = state.clone();
+        let w = window.as_weak();
         window.on_sidebar_changed(move |open| {
             lock(&s).settings.sidebar_open = open;
             if let Some(win) = w.upgrade() {
