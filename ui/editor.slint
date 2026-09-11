@@ -1,0 +1,244 @@
+// ui/editor.slint
+//
+// The document is ONE native multi-line TextInput — the same architecture as
+// Windows Notepad, VS Code or Sublime: one text surface owns the caret, the
+// blinking, the selection (click-drag, double-click word, triple-click line,
+// Ctrl+A, Shift+Arrow), the clipboard (Ctrl+C/X/V, paste without formatting)
+// and unlimited Enter/typing. Rust stays the source of truth: every native
+// edit arrives through `edited` with the full text and is reconciled into the
+// line model (highlights, lists, find); Rust-side mutations (file open, undo,
+// replace-all) flow back through the two-way `doc-text` binding.
+//
+// Per-line chrome (highlight bands, list markers, cursor wash) is stacked in
+// VerticalLayouts whose row heights come from hidden per-line Text measurers
+// with the SAME font/width/wrap as the document surface, so the overlays can
+// never drift from the renderer's own line geometry — no Rust-side pitch or
+// wrap estimation is involved in positioning.
+//
+// The caret/selection reach Rust as EXACT byte offsets
+// (`cursor-position-byte-offset` / `anchor-position-byte-offset`), so line
+// and column are derived by counting newlines, never from pixel math.
+
+import { AppTheme } from "themes/tokens.slint";
+import { EditorLineData, LineColour, ListType } from "model.slint";
+import { ListMarker } from "components/list_marker.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component Editor inherits Rectangle {
+    in property <[EditorLineData]> lines;
+    // The whole document, two-way with the TextInput and with Rust.
+    in-out property <string> doc-text;
+    in property <int> cursor-line: 0;
+    in property <float> zoom: 1.0;
+    in property <bool> wrapping: true;
+    // Character count of the longest line; sizes the wrap-off surface.
+    in property <int> max-line-len: 0;
+    in property <string> font-family: "Consolas";
+    in property <length> base-font-size: 14px;
+    in property <bool> motion-enabled: true;
+
+    // Exact caret / selection byte offsets in `doc-text`, live from the
+    // native surface. Rust converts them to (line, col) by counting lines.
+    out property <int> caret-offset: input.cursor-position-byte-offset;
+    out property <int> anchor-offset: input.anchor-position-byte-offset;
+
+    callback doc-edited(string);
+    callback caret-point(length, length);
+    callback checkbox-toggled(int);
+    callback key-command(string, bool, bool) -> bool;
+    callback tab-pressed(bool);
+
+    // Renderer-measured metrics kept for the wrap-off viewport width and the
+    // Win32 Rich Edit embedding's geometry.
+    out property <length> line-pitch: pitch-ruler.preferred-height / 2;
+    out property <length> char-w: glyph-ruler.preferred-width / 10;
+    out property <length> view-w: scroll.visible-width;
+
+    // CI drift diagnostics (NP_DEBUG_GEOM): the document surface's own total
+    // height vs the overlay band stack's total height. If these disagree the
+    // per-line measurers do not reproduce the TextInput's line geometry and
+    // the overlays drift; the ratio tells us the exact correction factor.
+    out property <length> dbg-text-h: input.preferred-height;
+    out property <length> dbg-bands-h: bands.height;
+    out property <length> dbg-caret-y: caret-y;
+    // In-app overlay drift: the renderer's own caret y (caret-point) minus the
+    // band stack's y for the same line (cursor-line * line-pitch). ~0 means the
+    // overlays sit exactly on the renderer's rows; this is the trustworthy
+    // drift signal (pixel-scanning the subtle wash is not).
+    out property <length> dbg-drift: Math.abs(caret-y - cursor-line * line-pitch);
+    property <length> caret-y: 0px;
+
+    background: AppTheme.editor-bg;
+    clip: true;
+
+    property <length> text-size: root.base-font-size * root.zoom;
+    property <length> gutter: 10px;
+    // Text column starts right of the marker zone so bullets, numbers and
+    // checkboxes never collide with the first characters.
+    property <length> text-x: root.gutter + root.zoom * 34px;
+
+    // Two-line ruler: its height / 2 is exactly the renderer's line pitch
+    // for this font (used only for approximate scroll reveals).
+    pitch-ruler := Text {
+        text: "0\n0";
+        font-family: root.font-family;
+        font-size: root.text-size;
+        wrap: no-wrap;
+        opacity: 0;
+    }
+    glyph-ruler := Text {
+        text: "0123456789";
+        font-family: root.font-family;
+        font-size: root.text-size;
+        wrap: no-wrap;
+        opacity: 0;
+    }
+
+    // Shortcut layer: Ctrl chords and Tab that the TextInput ignores bubble
+    // up to here (characters never reach it — the input owns them).
+    fs := FocusScope {
+        width: 100%;
+        height: 100%;
+        key-pressed(event) => {
+            if (event.text == "\u{0009}" && !event.modifiers.control) {
+                root.tab-pressed(!event.modifiers.shift);
+                accept
+            } else if (root.key-command(event.text, event.modifiers.control, event.modifiers.shift)) {
+                accept
+            } else {
+                reject
+            }
+        }
+
+        scroll := ScrollView {
+            width: 100%;
+            height: 100%;
+            // Without an explicit viewport-width the ScrollView can never
+            // scroll sideways, so wrap-off text past the right edge would be
+            // unreachable. Binding it to the content makes the horizontal
+            // bar appear exactly when the longest line exceeds the view.
+            viewport-width: content.width;
+            viewport-height: content.height;
+
+            content := Rectangle {
+                // Wrap on: fill the visible width and wrap. Wrap off: grow to
+                // the longest line (glyph-ruler math with 15 % headroom) so
+                // every character is reachable via horizontal scrolling.
+                width: root.wrapping
+                    ? scroll.visible-width
+                    : max(scroll.visible-width, root.text-x + root.max-line-len * root.char-w * 1.15);
+                height: input.preferred-height + root.text-size;
+
+                // ── Highlight / find bands + cursor wash, UNDER the text ──
+                // Row heights come from hidden per-line measurers with the
+                // same font/width/wrap as the surface: the stack therefore
+                // matches the TextInput's own line geometry exactly.
+                bands := VerticalLayout {
+                    x: 0; y: 0; width: 100%;
+                    spacing: 0px;
+                    for line[i] in root.lines : Rectangle {
+                        // Snap to whole line pitches: a single-line measurer
+                        // reports the tight glyph box (~11px) without trailing leading,
+                        // while the surface lays lines out at line-pitch (14px). Using
+                        // the measurer only to COUNT visual lines and multiplying by
+                        // line-pitch keeps every overlay row exactly on its text row.
+                        height: max(Math.round(band-m.preferred-height / root.line-pitch), 1) * root.line-pitch;
+                        band-m := Text {
+                            text: line.text;
+                            font-family: root.font-family;
+                            font-size: root.text-size;
+                            wrap: root.wrapping ? word-wrap : no-wrap;
+                            width: input.width;
+                            opacity: 0;
+                        }
+                        background: line.selected
+                            ? AppTheme.surface.with-alpha(0.35)
+                            : (line.find-current
+                                ? AppTheme.accent-colour.with-alpha(0.55)
+                                : (line.colour != LineColour.None
+                                    ? line.accent.with-alpha(0.25)
+                                    : (line.find-match
+                                        ? AppTheme.warning-colour.with-alpha(0.30)
+                                        : transparent)));
+                        animate background {
+                            duration: root.motion-enabled ? 350ms : 0ms;
+                            easing: ease-out;
+                        }
+
+                        // Left accent bar.
+                        Rectangle {
+                            width: 3px;
+                            height: parent.height;
+                            border-radius: 2px;
+                            background: line.colour != LineColour.None ? line.accent : transparent;
+                        }
+                    }
+                }
+
+                // ── The document surface ───────────────────────────────────
+                input := TextInput {
+                    width: 100%;
+                    height: 100%;
+                    x: root.text-x;
+                    y: 0;
+                    text <=> root.doc-text;
+                    font-family: root.font-family;
+                    font-size: root.text-size;
+                    wrap: root.wrapping ? word-wrap : no-wrap;
+                    single-line: false;
+                    color: AppTheme.editor-text;
+                    selection-background-color: AppTheme.selection-colour;
+                    selection-foreground-color: AppTheme.editor-text;
+
+                    edited => { root.doc-edited(self.text); }
+                    cursor-position-changed(pt) => {
+                        root.caret-y = pt.y;
+                        root.caret-point(pt.x, pt.y);
+                    }
+                }
+
+                // ── List markers, OVER the text so numbers/checkboxes are
+                // never hidden behind glyphs. Same measurer-driven heights.
+                VerticalLayout {
+                    x: 0; y: 0; width: 100%;
+                    spacing: 0px;
+                    for line[i] in root.lines : Rectangle {
+                        height: max(Math.round(marker-m.preferred-height / root.line-pitch), 1) * root.line-pitch;
+                        marker-m := Text {
+                            text: line.text;
+                            font-family: root.font-family;
+                            font-size: root.text-size;
+                            wrap: root.wrapping ? word-wrap : no-wrap;
+                            width: input.width;
+                            opacity: 0;
+                        }
+                        if line.list-type != ListType.None : ListMarker {
+                            x: root.gutter + (line.indent * 22px);
+                            y: 0;
+                            list-type: line.list-type;
+                            marker: line.marker;
+                            checked: line.checked;
+                            toggled => { root.checkbox-toggled(i); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Scroll the given pixel y offset into view (top third of the viewport).
+    public function reveal-y(y: length) {
+        scroll.viewport-y = max(
+            -(scroll.viewport-height - scroll.visible-height),
+            min(0px, scroll.visible-height / 3 - y));
+    }
+
+    /// Put the native caret at a UTF-8 byte offset in the document. Rust calls
+    /// this after it has rewritten the surface text (markdown shortcut folded
+    /// into a list marker, list continuation on Enter): assigning `text`
+    /// resets the caret to offset 0, which is what made typing appear to run
+    /// backwards from the top of the file.
+    public function place-caret(offset: int) {
+        input.set-selection-offsets(offset, offset);
+    }
+}

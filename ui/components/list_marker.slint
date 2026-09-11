@@ -1,0 +1,58 @@
+// ui/components/list_marker.slint
+//
+// Bullet glyph, resolved list number, or an interactive checkbox.
+//
+// The marker column has a fixed width so that "9." and "10." cannot collide
+// with the text that follows (bug #8 in the original build).
+
+import { AppTheme } from "../themes/tokens.slint";
+import { ListType } from "../model.slint";
+
+export component ListMarker inherits Rectangle {
+    in property <ListType> list-type;
+    // Pre-rendered by Rust: "•", "◦", "▪", "‣", "3." — never recomputed here.
+    in property <string> marker;
+    in property <bool> checked;
+    in property <bool> interactive: true;
+    callback toggled();
+
+    width: 26px;
+    height: 20px;
+
+    if root.list-type != ListType.Check : Text {
+        text: root.marker;
+        color: AppTheme.text-muted;
+        font-size: 13px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    if root.list-type == ListType.Check : Rectangle {
+        width: 16px;
+        height: 16px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: 4px;
+        border-width: 1.5px;
+        border-color: root.checked ? AppTheme.accent-colour : AppTheme.border-colour;
+        background: root.checked ? AppTheme.accent-colour : transparent;
+
+        animate background { duration: 160ms; easing: ease-out; }
+        animate border-color { duration: 160ms; easing: ease-out; }
+
+        if root.checked : Path {
+            x: 2px;
+            y: 2px;
+            width: 12px;
+            height: 12px;
+            stroke: AppTheme.accent-text;
+            stroke-width: 2px;
+            commands: "M 1.5 6 L 4.5 9 L 10.5 2.5";
+        }
+    }
+
+    if root.interactive && root.list-type == ListType.Check : TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.toggled(); }
+    }
+}

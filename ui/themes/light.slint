@@ -1,0 +1,57 @@
+// ui/themes/light.slint — Flat Light (default)
+
+import { AppTheme } from "tokens.slint";
+
+export global LightTheme {
+    public function apply() {
+        // Backgrounds
+        AppTheme.window-bg = #f5f6fa;
+        AppTheme.toolbar-bg = #ffffff;
+        AppTheme.editor-bg = #ffffff;
+        AppTheme.sidebar-bg = #f0f1f5;
+        AppTheme.panel-bg = #ffffff;
+        AppTheme.surface = #f0f1f5;
+        AppTheme.surface-hover = #e8e9f0;
+        AppTheme.card-bg = #ffffff;
+        AppTheme.card-active = #eef2ff;
+        AppTheme.code-bg = #f8f9fc;
+        AppTheme.input-bg = #ffffff;
+        AppTheme.tab-bg = #f0f1f5;
+        AppTheme.tab-active-bg = #ffffff;
+
+        // Text
+        AppTheme.text-colour = #1b1f2a;
+        AppTheme.text-muted = #6b7280;
+        AppTheme.text-strong = #0b0e15;
+        AppTheme.editor-text = #1b1f2a;
+        AppTheme.editor-text-on-highlight = #1b1f2a;
+        AppTheme.tooltip-text = #ffffff;
+        AppTheme.tooltip-bg = #1b1f2a;
+        AppTheme.caret-colour = #1b1f2a;
+        AppTheme.selection-colour = #6366f140;
+
+        // Accents
+        AppTheme.accent-colour = #6366f1;
+        AppTheme.accent-colour-2 = #8b5cf6;
+        AppTheme.accent-text = #ffffff;
+        AppTheme.danger-colour = #e81123;
+        AppTheme.success-colour = #22c55e;
+        AppTheme.warning-colour = #f59e0b;
+
+        // Depth
+        AppTheme.border-colour = #e2e4ea;
+        AppTheme.shadow-colour = #00000018;
+        AppTheme.shadow-light = #ffffff;
+        AppTheme.shadow-dark = #d6dae3;
+        AppTheme.depth = 0.0;
+
+        // Shape
+        AppTheme.radius-sm = 6px;
+        AppTheme.radius-md = 10px;
+        AppTheme.radius-lg = 16px;
+        AppTheme.radius-xl = 12px;
+        AppTheme.border-w = 1px;
+
+        AppTheme.is-dark = false;
+    }
+}

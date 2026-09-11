@@ -1,0 +1,22 @@
+Source: notepad-pro
+Section: editors
+Priority: optional
+Maintainer: NotePad Pro contributors <dev@notepadpro.example>
+Build-Depends: debhelper-compat (= 13), cargo, rustc (>= 1.78.0)
+Standards-Version: 4.6.2
+Homepage: https://github.com/ahmadyb/notepad-pro
+Vcs-Git: https://github.com/ahmadyb/notepad-pro.git
+
+Package: notepad-pro
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends},
+ libxkbcommon0, libfontconfig1
+Description: line-oriented text editor with multi-colour highlighting
+ NotePad Pro is a desktop notepad written in Rust with a Slint UI.
+ It provides simple and multi-colour line highlighting, extract-by-colour,
+ list mode (bullet / numbered / checkbox), a SQLite-backed notes sidebar,
+ seven themes, liquid animations, custom window controls and a 200-state
+ undo history.
+ .
+ The binary is fully self-contained; all rendering is done with Slint's
+ software renderer — no WebView or browser engine is used.

@@ -1,0 +1,82 @@
+// ui/themes/tokens.slint
+//
+// The single source of truth for every themed value — the Slint equivalent of
+// a CSS custom-property table. Components import `AppTheme` and read from it;
+// the seven theme files write to it.
+//
+// The defaults below are the Light palette, so the very first frame is
+// correctly themed even before Rust calls an apply-* function.
+
+export global AppTheme {
+    // ── Backgrounds ───────────────────────────────────────────────────────
+    in-out property <color> window-bg: #f5f6fa;
+    in-out property <color> toolbar-bg: #ffffff;
+    in-out property <color> editor-bg: #ffffff;
+    in-out property <color> sidebar-bg: #f0f1f5;
+    in-out property <color> panel-bg: #ffffff;
+    in-out property <color> surface: #f0f1f5;
+    in-out property <color> surface-hover: #e8e9f0;
+    in-out property <color> card-bg: #ffffff;
+    in-out property <color> card-active: #eef2ff;
+    in-out property <color> code-bg: #f8f9fc;
+    in-out property <color> input-bg: #ffffff;
+    in-out property <color> tab-bg: #f0f1f5;
+    in-out property <color> tab-active-bg: #ffffff;
+
+    // ── Text ──────────────────────────────────────────────────────────────
+    in-out property <color> text-colour: #1b1f2a;
+    in-out property <color> text-muted: #6b7280;
+    in-out property <color> text-strong: #0b0e15;
+    in-out property <color> editor-text: #1b1f2a;
+    // Used for text sitting on a highlight band. Every one of the six
+    // built-in bands is light, so this stays dark in all seven themes —
+    // this is the fix for the original "invisible text on dark themes" bug.
+    in-out property <color> editor-text-on-highlight: #1b1f2a;
+    in-out property <color> tooltip-text: #ffffff;
+    in-out property <color> tooltip-bg: #1b1f2a;
+    in-out property <color> caret-colour: #1b1f2a;
+    in-out property <color> selection-colour: #6366f140;
+
+    // ── Accents ───────────────────────────────────────────────────────────
+    in-out property <color> accent-colour: #6366f1;
+    in-out property <color> accent-colour-2: #8b5cf6;
+    in-out property <color> accent-text: #ffffff;
+    in-out property <color> danger-colour: #e81123;
+    in-out property <color> success-colour: #22c55e;
+    in-out property <color> warning-colour: #f59e0b;
+
+    // ── Borders, shadows, depth ───────────────────────────────────────────
+    in-out property <color> border-colour: #e2e4ea;
+    in-out property <color> shadow-colour: #00000018;
+    // Neumorphic themes drive their depth from these two instead of borders.
+    in-out property <color> shadow-light: #ffffff;
+    in-out property <color> shadow-dark: #a3b1c6;
+    // 0 = flat look, 1 = raised look.
+    in-out property <float> depth: 0.0;
+
+    // ── Shape ─────────────────────────────────────────────────────────────
+    in-out property <length> radius-sm: 6px;
+    in-out property <length> radius-md: 10px;
+    in-out property <length> radius-lg: 16px;
+    // Claymorphism pushes this right up; the flat themes keep it modest.
+    in-out property <length> radius-xl: 12px;
+    in-out property <length> border-w: 1px;
+
+    // ── Motion ────────────────────────────────────────────────────────────
+    // 0 disables the liquid background and shortens every transition.
+    in-out property <float> animation-speed: 1.0;
+    in-out property <duration> fast: 120ms;
+    in-out property <duration> normal: 220ms;
+    in-out property <duration> slow: 480ms;
+
+    // ── Metrics ───────────────────────────────────────────────────────────
+    in-out property <length> titlebar-height: 34px;
+    in-out property <length> toolbar-height: 44px;
+    in-out property <length> statusbar-height: 24px;
+    in-out property <length> sidebar-width: 300px;
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+
+    /// True when the theme is dark, so components can flip an accent if needed.
+    in-out property <bool> is-dark: false;
+}

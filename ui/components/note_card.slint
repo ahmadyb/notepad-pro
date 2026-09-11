@@ -1,0 +1,141 @@
+// ui/components/note_card.slint
+//
+// One row of the notes sidebar.
+
+import { AppTheme } from "../themes/tokens.slint";
+import { NoteMetadataData } from "../model.slint";
+
+export component NoteCard inherits Rectangle {
+    in property <NoteMetadataData> note;
+    in property <bool> selected: false;
+    callback clicked();
+    callback pin-clicked();
+    callback delete-clicked();
+
+    height: 74px;
+    border-radius: AppTheme.radius-md;
+    clip: true;
+    background: root.selected ? AppTheme.card-active : AppTheme.card-bg;
+    border-width: AppTheme.border-w;
+    border-color: root.selected ? AppTheme.accent-colour : AppTheme.border-colour;
+
+    animate background { duration: AppTheme.fast; easing: ease-out; }
+    animate border-color { duration: AppTheme.fast; easing: ease-out; }
+
+    // Whole-card click target, underneath the buttons.
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+
+    // Pin accent bar
+    if root.note.pinned : Rectangle {
+        width: 3px;
+        height: parent.height;
+        border-radius: 2px;
+        background: AppTheme.accent-colour;
+    }
+
+    VerticalLayout {
+        padding: 8px;
+        padding-left: 12px;
+        spacing: 3px;
+
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+
+            Text {
+                text: root.note.pinned ? "📌 " + root.note.title : root.note.title;
+                font-size: 13px;
+                font-weight: 600;
+                color: AppTheme.text-colour;
+                overflow: elide;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+
+            Text {
+                text: root.note.modified-label;
+                font-size: 10px;
+                color: AppTheme.text-muted;
+                vertical-alignment: center;
+            }
+        }
+
+        Text {
+            text: root.note.snippet;
+            font-size: 11px;
+            color: AppTheme.text-muted;
+            overflow: elide;
+        }
+
+        HorizontalLayout {
+            spacing: 4px;
+            alignment: start;
+
+            Rectangle {
+                width: 9px; height: 9px; border-radius: 4.5px;
+                background: root.note.chip-a;
+                visible: root.note.chip-count > 0;
+            }
+            Rectangle {
+                width: 9px; height: 9px; border-radius: 4.5px;
+                background: root.note.chip-b;
+                visible: root.note.chip-count > 1;
+            }
+            Rectangle {
+                width: 9px; height: 9px; border-radius: 4.5px;
+                background: root.note.chip-c;
+                visible: root.note.chip-count > 2;
+            }
+            Rectangle {
+                width: 9px; height: 9px; border-radius: 4.5px;
+                background: root.note.chip-d;
+                visible: root.note.chip-count > 3;
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            // Pin toggle
+            Rectangle {
+                z: 5;
+                width: 20px;
+                height: 20px;
+                border-radius: 5px;
+                background: pin-touch.has-hover ? AppTheme.surface-hover : transparent;
+                Text {
+                    text: root.note.pinned ? "📌" : "📍";
+                    font-size: 10px;
+                    opacity: root.note.pinned ? 1.0 : 0.45;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                pin-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.pin-clicked(); }
+                }
+            }
+
+            // Delete
+            Rectangle {
+                z: 5;
+                width: 20px;
+                height: 20px;
+                border-radius: 5px;
+                background: del-touch.has-hover ? AppTheme.danger-colour : transparent;
+                Text {
+                    text: "✕";
+                    font-size: 10px;
+                    color: del-touch.has-hover ? AppTheme.accent-text : AppTheme.text-muted;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                del-touch := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.delete-clicked(); }
+                }
+            }
+        }
+    }
+}
